@@ -35,7 +35,19 @@ import org.apache.logging.log4j.core.config.Property;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+  <<<<<<< LOG4J2-1949
+import org.mockito.runners.MockitoJUnitRunner;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+  =======
 import org.mockito.junit.MockitoJUnitRunner;
+  >>>>>>> new-iso-date-time-formats
 
 @RunWith(MockitoJUnitRunner.class)
 public class AbstractDatabaseAppenderTest {
@@ -115,6 +127,50 @@ public class AbstractDatabaseAppenderTest {
     @Test
     public void testStartAndStop() throws Exception {
         setUp("name");
+  <<<<<<< LOG4J2-1949
+        given(manager.commitAndClose()).willReturn(true);
+
+        final LogEvent event1 = mock(LogEvent.class);
+        final LogEvent event2 = mock(LogEvent.class);
+
+        appender.append(event1);
+        then(manager).should().connectAndStart();
+        then(manager).should().writeInternal(same(event1));
+        then(manager).should().commitAndClose();
+
+        reset(manager);
+
+        appender.append(event2);
+        then(manager).should().connectAndStart();
+        then(manager).should().writeInternal(same(event2));
+        then(manager).should().commitAndClose();
+    }
+    
+    @Test
+    public void testOnBeforeFailoverAppenderStop() throws Exception {
+        setUp("name");
+        appender.beforeFailoverAppenderStop();
+        verify(manager).onBeforeFailoverAppenderStop();
+    }
+    
+    @Test
+    public void testOnBeforeFailoverAppenderStopException() throws Exception {
+        setUp("name");
+        Exception exception = mock(Exception.class);
+        appender.beforeFailoverAppenderStopException(exception);
+        verify(manager).onBeforeFailoverAppenderStopException();
+    }
+    
+    @Test
+    public void testOnFailover() throws Exception {
+        setUp("name");
+        LogEvent event = mock(LogEvent.class);
+        Exception exception = mock(Exception.class);
+        appender.onFailover(event, exception);
+        verify(manager).onFailover(event);
+    }
+  =======
+  >>>>>>> new-iso-date-time-formats
 
         appender.start();
         then(manager).should().startupInternal();
