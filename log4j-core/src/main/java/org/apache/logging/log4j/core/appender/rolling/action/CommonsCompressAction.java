@@ -33,10 +33,10 @@ import org.apache.commons.compress.utils.IOUtils;
  */
 public final class CommonsCompressAction extends AbstractAction {
 
-    private static final int BUF_SIZE = 8102;
+    private static final int BUF_SIZE = 8192;
 
     /**
-     * Compressor name. One of "gz", "bzip2", "xz", "pack200", or "deflate".
+     * Compressor name. One of "gz", "bzip2", "xz", "pack200" or "deflate".
      */
     private final String name;
 
@@ -120,7 +120,7 @@ public final class CommonsCompressAction extends AbstractAction {
                 } else {
                     LOGGER.warn("Unable to delete {} after {} compression. File did not exist", source.toString(), name);
                 }
-            } catch (Exception ex) {
+            } catch (final Exception ex) {
                 LOGGER.warn("Unable to delete {} after {} compression, {}", source.toString(), name, ex.getMessage());
             }
         }
@@ -140,7 +140,7 @@ public final class CommonsCompressAction extends AbstractAction {
 
     @Override
     public String toString() {
-        return CommonsCompressAction.class.getSimpleName() + '[' + source + " to " + destination //
+        return CommonsCompressAction.class.getSimpleName() + '[' + source + " to " + destination
                 + ", deleteSource=" + deleteSource + ']';
     }
 

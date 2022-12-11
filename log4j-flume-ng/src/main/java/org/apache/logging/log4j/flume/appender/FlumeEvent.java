@@ -29,16 +29,17 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LoggingException;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.ThreadContext;
-import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
+import org.apache.logging.log4j.core.time.Instant;
 import org.apache.logging.log4j.core.util.Patterns;
 import org.apache.logging.log4j.core.util.UuidUtil;
 import org.apache.logging.log4j.message.MapMessage;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.StructuredDataId;
 import org.apache.logging.log4j.message.StructuredDataMessage;
+import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.util.Strings;
 
 /**
@@ -133,11 +134,14 @@ public class FlumeEvent extends SimpleEvent implements LogEvent {
         final Message message = event.getMessage();
         if (message instanceof MapMessage) {
             // Add the guid to the Map so that it can be included in the Layout.
-            ((MapMessage) message).put(GUID, guid);
+        	@SuppressWarnings("unchecked")
+            final
+			MapMessage<?, String> stringMapMessage = (MapMessage<?, String>) message;
+        	stringMapMessage.put(GUID, guid);
             if (message instanceof StructuredDataMessage) {
                 addStructuredData(eventPrefix, headers, (StructuredDataMessage) message);
             }
-            addMapData(eventPrefix, headers, (MapMessage) message);
+            addMapData(eventPrefix, headers, stringMapMessage);
         } else {
             headers.put(GUID, guid);
         }
@@ -152,7 +156,7 @@ public class FlumeEvent extends SimpleEvent implements LogEvent {
         fields.put(prefix + EVENT_ID, id.getName());
     }
 
-    protected void addMapData(final String prefix, final Map<String, String> fields, final MapMessage msg) {
+    protected void addMapData(final String prefix, final Map<String, String> fields, final MapMessage<?, String> msg) {
         final Map<String, String> data = msg.getData();
         for (final Map.Entry<String, String> entry : data.entrySet()) {
             fields.put(prefix + entry.getKey(), entry.getValue());
@@ -291,6 +295,15 @@ public class FlumeEvent extends SimpleEvent implements LogEvent {
     }
 
     /**
+     * {@inheritDoc}
+     * @since 2.11.0
+     */
+    @Override
+    public Instant getInstant() {
+        return event.getInstant();
+    }
+
+    /**
      * Returns the value of the running Java Virtual Machine's high-resolution time source when this event was created,
      * or a dummy value if it is known that this value will not be used downstream.
      * @return the event nanosecond timestamp.
@@ -316,15 +329,6 @@ public class FlumeEvent extends SimpleEvent implements LogEvent {
     @Override
     public ThrowableProxy getThrownProxy() {
         return event.getThrownProxy();
-    }
-
-    /**
-     * Returns a copy of the context Map.
-     * @return a copy of the context Map.
-     */
-    @Override
-    public Map<String, String> getContextMap() {
-        return contextMap;
     }
 
     /**

@@ -16,16 +16,17 @@
  */
 package org.apache.logging.log4j.core.lookup;
 
-import java.util.Locale;
-
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
+import org.apache.logging.log4j.plugins.Plugin;
 import org.apache.logging.log4j.util.Strings;
+
+import java.util.Locale;
 
 /**
  * Looks up keys related to Java: Java version, JRE version, VM version, and so on.
  */
-@Plugin(name = "java", category = StrLookup.CATEGORY)
+@Lookup
+@Plugin("java")
 public class JavaLookup extends AbstractLookup {
 
     private final SystemPropertiesLookup spLookup = new SystemPropertiesLookup();
@@ -89,7 +90,7 @@ public class JavaLookup extends AbstractLookup {
     }
 
     /**
-     * Looks up the value of the environment variable.
+     * Looks up the value of the Java platform key.
      *
      * @param event
      *        The current LogEvent (is ignored by this StrLookup).

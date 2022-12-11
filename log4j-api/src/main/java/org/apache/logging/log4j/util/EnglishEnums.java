@@ -20,7 +20,7 @@ import java.util.Locale;
 
 /**
  * <em>Consider this class private.</em>
- * 
+ *
  * <p>
  * Helps convert English Strings to English Enum values.
  * </p>
@@ -29,6 +29,7 @@ import java.util.Locale;
  * avoid problems on the Turkish locale. Do not use with Turkish enum values.
  * </p>
  */
+@InternalApi
 public final class EnglishEnums {
 
     private EnglishEnums() {

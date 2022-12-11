@@ -17,18 +17,19 @@
 package org.apache.logging.log4j.core.appender.routing;
 
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.config.plugins.PluginNode;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Node;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.PluginNode;
 import org.apache.logging.log4j.status.StatusLogger;
 
 /**
  * A Route to an appender.
  */
-@Plugin(name = "Route", category = Core.CATEGORY_NAME, printObject = true, deferChildren = true)
+@Configurable(printObject = true, deferChildren = true)
+@Plugin
 public final class Route {
     private static final Logger LOGGER = StatusLogger.getLogger();
 
@@ -96,7 +97,7 @@ public final class Route {
     @PluginFactory
     public static Route createRoute(
             @PluginAttribute("ref") final String appenderRef,
-            @PluginAttribute("key") final String key,
+            @PluginAttribute final String key,
             @PluginNode final Node node) {
         if (node != null && node.hasChildren()) {
             if (appenderRef != null) {

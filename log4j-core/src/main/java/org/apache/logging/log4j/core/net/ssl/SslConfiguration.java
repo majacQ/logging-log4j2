@@ -16,10 +16,12 @@
  */
 package org.apache.logging.log4j.core.net.ssl;
 
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.UnrecoverableKeyException;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.status.StatusLogger;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
@@ -28,31 +30,43 @@ import javax.net.ssl.SSLServerSocketFactory;
 import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
-
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.status.StatusLogger;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
 
 /**
  *  SSL Configuration
  */
-@Plugin(name = "Ssl", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin("Ssl")
 public class SslConfiguration {
     private static final StatusLogger LOGGER = StatusLogger.getLogger();
     private final KeyStoreConfiguration keyStoreConfig;
     private final TrustStoreConfiguration trustStoreConfig;
     private final SSLContext sslContext;
     private final String protocol;
+    private final boolean verifyHostName;
 
     private SslConfiguration(final String protocol, final KeyStoreConfiguration keyStoreConfig,
-            final TrustStoreConfiguration trustStoreConfig) {
+            final TrustStoreConfiguration trustStoreConfig, final boolean verifyHostName) {
         this.keyStoreConfig = keyStoreConfig;
         this.trustStoreConfig = trustStoreConfig;
         this.protocol = protocol == null ? SslConfigurationDefaults.PROTOCOL : protocol;
         this.sslContext = this.createSslContext();
+        this.verifyHostName = verifyHostName;
+    }
+
+    /**
+     * Clears the secret fields in this object but still allow it to operate normally.
+     */
+    public void clearSecrets() {
+        if (this.keyStoreConfig != null) {
+            this.keyStoreConfig.clearSecrets();
+        }
+        if (this.trustStoreConfig != null) {
+            this.trustStoreConfig.clearSecrets();
+        }
     }
 
     public SSLSocketFactory getSslSocketFactory() {
@@ -115,7 +129,7 @@ public class SslConfiguration {
         try {
             return createSslContext(true, false);
         } catch (final KeyStoreConfigurationException dummy) {
-             LOGGER.debug("Exception occured while using default keystore. This should be a BUG");
+             LOGGER.debug("Exception occurred while using default keystore. This should be a BUG");
              return null;
         }
     }
@@ -125,7 +139,7 @@ public class SslConfiguration {
             return createSslContext(false, true);
         }
         catch (final TrustStoreConfigurationException dummy) {
-            LOGGER.debug("Exception occured while using default truststore. This should be a BUG");
+            LOGGER.debug("Exception occurred while using default truststore. This should be a BUG");
             return null;
         }
     }
@@ -207,6 +221,7 @@ public class SslConfiguration {
 
     /**
      * Creates an SslConfiguration from a KeyStoreConfiguration and a TrustStoreConfiguration.
+     *
      * @param protocol The protocol, see http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#SSLContext
      * @param keyStoreConfig The KeyStoreConfiguration.
      * @param trustStoreConfig The TrustStoreConfiguration.
@@ -215,11 +230,31 @@ public class SslConfiguration {
     @PluginFactory
     public static SslConfiguration createSSLConfiguration(
             // @formatter:off
-            @PluginAttribute("protocol") final String protocol,
-            @PluginElement("KeyStore") final KeyStoreConfiguration keyStoreConfig, 
-            @PluginElement("TrustStore") final TrustStoreConfiguration trustStoreConfig) {
+            @PluginAttribute final String protocol,
+            @PluginElement final KeyStoreConfiguration keyStoreConfig,
+            @PluginElement final TrustStoreConfiguration trustStoreConfig) {
             // @formatter:on
-        return new SslConfiguration(protocol, keyStoreConfig, trustStoreConfig);
+        return new SslConfiguration(protocol, keyStoreConfig, trustStoreConfig, false);
+    }
+
+    /**
+     * Creates an SslConfiguration from a KeyStoreConfiguration and a TrustStoreConfiguration.
+     *
+     * @param protocol The protocol, see http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#SSLContext
+     * @param keyStoreConfig The KeyStoreConfiguration.
+     * @param trustStoreConfig The TrustStoreConfiguration.
+     * @param verifyHostName whether or not to perform host name verification
+     * @return a new SslConfiguration
+     * @since 2.12
+     */
+    public static SslConfiguration createSSLConfiguration(
+            // @formatter:off
+            @PluginAttribute final String protocol,
+            @PluginElement final KeyStoreConfiguration keyStoreConfig,
+            @PluginElement final TrustStoreConfiguration trustStoreConfig,
+            @PluginAttribute final boolean verifyHostName) {
+        // @formatter:on
+        return new SslConfiguration(protocol, keyStoreConfig, trustStoreConfig, verifyHostName);
     }
 
     @Override
@@ -290,5 +325,9 @@ public class SslConfiguration {
 
     public String getProtocol() {
         return protocol;
+    }
+
+    public boolean isVerifyHostName() {
+        return verifyHostName;
     }
 }

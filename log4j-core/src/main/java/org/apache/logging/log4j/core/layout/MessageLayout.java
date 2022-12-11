@@ -20,36 +20,37 @@ package org.apache.logging.log4j.core.layout;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginFactory;
 
 /**
  * Formats a {@link LogEvent} in its {@link Message} form.
  * <p>
- * Useful in combination with a JMS Appender to map a Log4j {@link org.apache.logging.log4j.message.MapMessage} to a JMS
- * {@link javax.jms.MapMessage}.
+ * Useful in combination with a JMS Appender to map a Log4j {@link org.apache.logging.log4j.message.MapMessage} or
+ * {@link org.apache.logging.log4j.message.StringMapMessage} to a JMS {@link javax.jms.MapMessage}.
  * </p>
  */
-@Plugin(name = "MessageLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Plugin
 public class MessageLayout extends AbstractLayout<Message> {
-
-    public MessageLayout(Configuration configuration, byte[] header, byte[] footer) {
-        super(configuration, header, footer);
-    }
 
     public MessageLayout() {
         super(null, null, null);
     }
 
+    public MessageLayout(final Configuration configuration, final byte[] header, final byte[] footer) {
+        super(configuration, header, footer);
+    }
+
     @Override
-    public byte[] toByteArray(LogEvent event) {
+    public byte[] toByteArray(final LogEvent event) {
         return null;
     }
 
     @Override
-    public Message toSerializable(LogEvent event) {
+    public Message toSerializable(final LogEvent event) {
         return event.getMessage();
     }
 

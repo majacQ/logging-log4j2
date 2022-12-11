@@ -43,7 +43,6 @@ public class RandomAccessFileManager extends OutputStreamManager {
 
     private final String advertiseURI;
     private final RandomAccessFile randomAccessFile;
-    private final ThreadLocal<Boolean> isEndOfBatch = new ThreadLocal<>();
 
     protected RandomAccessFileManager(final LoggerContext loggerContext, final RandomAccessFile file, final String fileName,
             final OutputStream os, final int bufferSize, final String advertiseURI,
@@ -51,7 +50,6 @@ public class RandomAccessFileManager extends OutputStreamManager {
         super(loggerContext, os, fileName, false, layout, writeHeader, ByteBuffer.wrap(new byte[bufferSize]));
         this.randomAccessFile = file;
         this.advertiseURI = advertiseURI;
-        this.isEndOfBatch.set(Boolean.FALSE);
     }
 
     /**
@@ -60,7 +58,7 @@ public class RandomAccessFileManager extends OutputStreamManager {
      * @param fileName The name of the file to manage.
      * @param append true if the file should be appended to, false if it should
      *            be overwritten.
-     * @param isFlush true if the contents should be flushed to disk on every
+     * @param immediateFlush true if the contents should be flushed to disk on every
      *            write
      * @param bufferSize The buffer size.
      * @param advertiseURI the URI to use when advertising the file
@@ -69,18 +67,29 @@ public class RandomAccessFileManager extends OutputStreamManager {
      * @return A RandomAccessFileManager for the File.
      */
     public static RandomAccessFileManager getFileManager(final String fileName, final boolean append,
-            final boolean isFlush, final int bufferSize, final String advertiseURI,
+            final boolean immediateFlush, final int bufferSize, final String advertiseURI,
             final Layout<? extends Serializable> layout, final Configuration configuration) {
-        return (RandomAccessFileManager) getManager(fileName, new FactoryData(append,
-                isFlush, bufferSize, advertiseURI, layout, configuration), FACTORY);
+        return narrow(RandomAccessFileManager.class, getManager(fileName,
+                new FactoryData(append, immediateFlush, bufferSize, advertiseURI, layout, configuration), FACTORY));
     }
 
+    /**
+     * No longer used, the {@link org.apache.logging.log4j.core.LogEvent#isEndOfBatch()} attribute is used instead.
+     * @return {@link Boolean#FALSE}.
+     * @deprecated end-of-batch on the event is used instead.
+     */
+	@Deprecated
     public Boolean isEndOfBatch() {
-        return isEndOfBatch.get();
+        return Boolean.FALSE;
     }
 
-    public void setEndOfBatch(final boolean endOfBatch) {
-        this.isEndOfBatch.set(Boolean.valueOf(endOfBatch));
+    /**
+     * No longer used, the {@link org.apache.logging.log4j.core.LogEvent#isEndOfBatch()} attribute is used instead.
+     * This method is a no-op.
+     * @deprecated end-of-batch on the event is used instead.
+     */
+    @Deprecated
+    public void setEndOfBatch(@SuppressWarnings("unused") final boolean endOfBatch) {
     }
 
     @Override
@@ -193,7 +202,7 @@ public class RandomAccessFileManager extends OutputStreamManager {
 
             final boolean writeHeader = !data.append || !file.exists();
             final OutputStream os = NullOutputStream.getInstance();
-            RandomAccessFile raf;
+            final RandomAccessFile raf;
             try {
                 FileUtils.makeParentDirs(file);
                 raf = new RandomAccessFile(name, "rw");

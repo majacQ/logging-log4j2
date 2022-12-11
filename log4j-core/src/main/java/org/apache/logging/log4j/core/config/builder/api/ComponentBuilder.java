@@ -18,7 +18,7 @@ package org.apache.logging.log4j.core.config.builder.api;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.util.Builder;
+import org.apache.logging.log4j.plugins.util.Builder;
 
 /**
  * Builds arbitrary components and is the base type for the provided components.
@@ -62,7 +62,7 @@ public interface ComponentBuilder<T extends ComponentBuilder<T>> extends Builder
     /**
      * Adds a boolean attribute.
      * @param key The attribute key.
-     * @param value The integer value.
+     * @param value The boolean value.
      * @return This ComponentBuilder.
      */
     T addAttribute(String key, boolean value);
@@ -70,7 +70,7 @@ public interface ComponentBuilder<T extends ComponentBuilder<T>> extends Builder
     /**
      * Adds an Object attribute.
      * @param key The attribute key.
-     * @param value The integer value.
+     * @param value The object value.
      * @return This ComponentBuilder.
      */
     T addAttribute(String key, Object value);

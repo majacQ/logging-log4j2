@@ -16,6 +16,8 @@
  */
 package org.apache.log4j.config;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -26,24 +28,30 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.stream.StreamResult;
+import javax.xml.transform.stream.StreamSource;
+
 import org.apache.logging.log4j.core.config.ConfigurationException;
 import org.apache.logging.log4j.core.config.builder.api.ConfigurationBuilder;
 import org.apache.logging.log4j.core.config.builder.impl.BuiltConfiguration;
-import org.apache.logging.log4j.core.util.BasicCommandLineArguments;
-
-import com.beust.jcommander.Parameter;
+import org.apache.logging.log4j.core.config.builder.impl.DefaultConfigurationBuilder;
+import org.apache.logging.log4j.core.tools.BasicCommandLineArguments;
+import org.apache.logging.log4j.core.tools.picocli.CommandLine;
+import org.apache.logging.log4j.core.tools.picocli.CommandLine.Command;
+import org.apache.logging.log4j.core.tools.picocli.CommandLine.Option;
 
 /**
  * Tool for converting a Log4j 1.x properties configuration file to Log4j 2.x XML configuration file.
- * 
+ *
  * <p>
  * Run with "--help" on the command line.
  * </p>
- * 
+ *
  * <p>
  * Example:
  * </p>
- * 
+ *
  * <pre>
  * java org.apache.log4j.config.Log4j1ConfigurationConverter --recurse
  * E:\vcs\git\apache\logging\logging-log4j2\log4j-1.2-api\src\test\resources\config-1.2\hadoop --in log4j.properties --verbose
@@ -51,21 +59,22 @@ import com.beust.jcommander.Parameter;
  */
 public final class Log4j1ConfigurationConverter {
 
-    public static class CommandLineArguments extends BasicCommandLineArguments {
+    @Command(name = "Log4j1ConfigurationConverter")
+    public static class CommandLineArguments extends BasicCommandLineArguments implements Runnable {
 
-        @Parameter(names = { "--failfast", "-f" }, description = "Fails on the first failure in recurse mode.")
+        @Option(names = { "--failfast", "-f" }, description = "Fails on the first failure in recurse mode.")
         private boolean failFast;
 
-        @Parameter(names = { "--in", "-i" }, description = "Specifies the input file.")
+        @Option(names = { "--in", "-i" }, description = "Specifies the input file.")
         private Path pathIn;
 
-        @Parameter(names = { "--out", "-o" }, description = "Specifies the output file.")
+        @Option(names = { "--out", "-o" }, description = "Specifies the output file.")
         private Path pathOut;
 
-        @Parameter(names = { "--recurse", "-r" }, description = "Recurses into this folder looking for the input file")
+        @Option(names = { "--recurse", "-r" }, description = "Recurses into this folder looking for the input file")
         private Path recurseIntoPath;
 
-        @Parameter(names = { "--verbose", "-v" }, description = "Be verbose.")
+        @Option(names = { "--verbose", "-v" }, description = "Be verbose.")
         private boolean verbose;
 
         public Path getPathIn() {
@@ -109,18 +118,25 @@ public final class Log4j1ConfigurationConverter {
         }
 
         @Override
+        public void run() {
+            if (isHelp()) {
+                CommandLine.usage(this, System.err);
+                return;
+            }
+            new Log4j1ConfigurationConverter(this).run();
+        }
+
+        @Override
         public String toString() {
             return "CommandLineArguments [recurseIntoPath=" + recurseIntoPath + ", verbose=" + verbose + ", pathIn="
                     + pathIn + ", pathOut=" + pathOut + "]";
         }
-
     }
 
     private static final String FILE_EXT_XML = ".xml";
 
     public static void main(final String[] args) {
-        new Log4j1ConfigurationConverter(BasicCommandLineArguments.parseCommandLine(args,
-                Log4j1ConfigurationConverter.class, new CommandLineArguments())).run();
+        CommandLine.run(new CommandLineArguments(), System.err, args);
     }
 
     public static Log4j1ConfigurationConverter run(final CommandLineArguments cla) {
@@ -166,11 +182,16 @@ public final class Log4j1ConfigurationConverter {
                             final int lastIndex = newFile.lastIndexOf(".");
                             newFile = lastIndex < 0 ? newFile + FILE_EXT_XML
                                     : newFile.substring(0, lastIndex) + FILE_EXT_XML;
-                            final Path resolved = file.resolveSibling(newFile);
+                            final Path resolvedPath = file.resolveSibling(newFile);
                             try (final InputStream input = new InputStreamWrapper(Files.newInputStream(file), file.toString());
-                                    final OutputStream output = Files.newOutputStream(resolved)) {
+                                final OutputStream output = Files.newOutputStream(resolvedPath)) {
                                 try {
-                                    convert(input, output);
+                                    final ByteArrayOutputStream tmpOutput = new ByteArrayOutputStream();
+                                    convert(input, tmpOutput);
+                                    tmpOutput.close();
+                                    DefaultConfigurationBuilder.formatXml(
+                                        new StreamSource(new ByteArrayInputStream(tmpOutput.toByteArray())),
+                                        new StreamResult(output));
                                     countOKs.incrementAndGet();
                                 } catch (ConfigurationException | IOException e) {
                                     countFails.incrementAndGet();
@@ -178,8 +199,14 @@ public final class Log4j1ConfigurationConverter {
                                         throw e;
                                     }
                                     e.printStackTrace();
+                                } catch (TransformerException e) {
+                                    countFails.incrementAndGet();
+                                    if (cla.isFailFast()) {
+                                        throw new IOException(e);
+                                    }
+                                    e.printStackTrace();
                                 }
-                                verbose("Wrote %s", resolved);
+                                verbose("Wrote %s", resolvedPath);
                             }
                         }
                         return FileVisitResult.CONTINUE;

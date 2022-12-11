@@ -17,13 +17,15 @@
 package org.apache.logging.log4j.core.pattern;
 
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.Plugin;
 
 
 /**
  * Formats the class name of the site of the logging request.
  */
-@Plugin(name = "ClassNamePatternConverter", category = PatternConverter.CATEGORY)
+@Namespace(PatternConverter.CATEGORY)
+@Plugin("ClassNamePatternConverter")
 @ConverterKeys({ "C", "class" })
 public final class ClassNamePatternConverter extends NamePatternConverter {
 
@@ -63,5 +65,10 @@ public final class ClassNamePatternConverter extends NamePatternConverter {
         } else {
             abbreviate(element.getClassName(), toAppendTo);
         }
+    }
+
+    @Override
+    public boolean requiresLocation() {
+        return true;
     }
 }

@@ -26,6 +26,8 @@ import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.Objects;
 
+import org.apache.logging.log4j.spi.LoggingSystemProperties;
+
 /**
  * <em>Consider this class private.</em> Utility class for ClassLoaders.
  *
@@ -34,14 +36,10 @@ import java.util.Objects;
  * @see Thread#getContextClassLoader()
  * @see ClassLoader#getSystemClassLoader()
  */
+@InternalApi
 public final class LoaderUtil {
 
-    /**
-     * System property to set to ignore the thread context ClassLoader.
-     *
-     * @since 2.1
-     */
-    public static final String IGNORE_TCCL_PROPERTY = "log4j.ignoreTCL";
+    private static final ClassLoader[] EMPTY_CLASS_LOADER_ARRAY = {};
 
     private static final SecurityManager SECURITY_MANAGER = System.getSecurityManager();
 
@@ -50,6 +48,8 @@ public final class LoaderUtil {
     private static Boolean ignoreTCCL;
 
     private static final boolean GET_CLASS_LOADER_DISABLED;
+
+    protected static Boolean forceTcclOnly;
 
     private static final PrivilegedAction<ClassLoader> TCCL_GETTER = new ThreadContextClassLoaderGetter();
 
@@ -72,6 +72,26 @@ public final class LoaderUtil {
     }
 
     /**
+     * Returns the ClassLoader to use.
+     * @return the ClassLoader.
+     */
+    public static ClassLoader getClassLoader() {
+        return getClassLoader(LoaderUtil.class, null);
+    }
+
+    // TODO: this method could use some explanation
+    public static ClassLoader getClassLoader(final Class<?> class1, final Class<?> class2) {
+        final ClassLoader threadContextClassLoader = getThreadContextClassLoader();
+        final ClassLoader loader1 = class1 == null ? null : class1.getClassLoader();
+        final ClassLoader loader2 = class2 == null ? null : class2.getClassLoader();
+
+        if (isChild(threadContextClassLoader, loader1)) {
+            return isChild(threadContextClassLoader, loader2) ? threadContextClassLoader : loader2;
+        }
+        return isChild(loader1, loader2) ? loader1 : loader2;
+    }
+
+    /**
      * Gets the current Thread ClassLoader. Returns the system ClassLoader if the TCCL is {@code null}. If the system
      * ClassLoader is {@code null} as well, then the ClassLoader for this class is returned. If running with a
      * {@link SecurityManager} that does not allow access to the Thread ClassLoader or system ClassLoader, then the
@@ -89,6 +109,26 @@ public final class LoaderUtil {
     }
 
     /**
+     * Determines if one ClassLoader is a child of another ClassLoader. Note that a {@code null} ClassLoader is
+     * interpreted as the system ClassLoader as per convention.
+     *
+     * @param loader1 the ClassLoader to check for childhood.
+     * @param loader2 the ClassLoader to check for parenthood.
+     * @return {@code true} if the first ClassLoader is a strict descendant of the second ClassLoader.
+     */
+    private static boolean isChild(final ClassLoader loader1, final ClassLoader loader2) {
+        if (loader1 != null && loader2 != null) {
+            ClassLoader parent = loader1.getParent();
+            while (parent != null && parent != loader2) {
+                parent = parent.getParent();
+            }
+            // once parent is null, we're at the system CL, which would indicate they have separate ancestry
+            return parent != null;
+        }
+        return loader1 != null;
+    }
+
+    /**
      *
      */
     private static class ThreadContextClassLoaderGetter implements PrivilegedAction<ClassLoader> {
@@ -100,6 +140,55 @@ public final class LoaderUtil {
             }
             final ClassLoader ccl = LoaderUtil.class.getClassLoader();
             return ccl == null && !GET_CLASS_LOADER_DISABLED ? ClassLoader.getSystemClassLoader() : ccl;
+        }
+    }
+
+    public static ClassLoader[] getClassLoaders() {
+        final Collection<ClassLoader> classLoaders = new LinkedHashSet<>();
+        final ClassLoader tcl = getThreadContextClassLoader();
+        if (tcl != null) {
+            classLoaders.add(tcl);
+        }
+        final ModuleLayer layer = LoaderUtil.class.getModule().getLayer();
+        if (layer == null) {
+            if (!isForceTccl()) {
+                accumulateClassLoaders(LoaderUtil.class.getClassLoader(), classLoaders);
+                accumulateClassLoaders(tcl == null ? null : tcl.getParent(), classLoaders);
+                final ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
+                if (systemClassLoader != null) {
+                    classLoaders.add(systemClassLoader);
+                }
+            }
+        } else {
+            accumulateLayerClassLoaders(layer, classLoaders);
+            if (layer != ModuleLayer.boot()) {
+                for (final Module module : ModuleLayer.boot().modules()) {
+                    accumulateClassLoaders(module.getClassLoader(), classLoaders);
+                }
+            }
+        }
+        return classLoaders.toArray(EMPTY_CLASS_LOADER_ARRAY);
+    }
+
+    private static void accumulateLayerClassLoaders(final ModuleLayer layer, final Collection<ClassLoader> classLoaders) {
+        for (final Module module : layer.modules()) {
+            accumulateClassLoaders(module.getClassLoader(), classLoaders);
+        }
+        if (layer.parents().size() > 0) {
+            for (final ModuleLayer parent : layer.parents()) {
+                accumulateLayerClassLoaders(parent, classLoaders);
+            }
+        }
+    }
+
+    /**
+     * Adds the provided loader to the loaders collection, and traverses up the tree until either a null
+     * value or a classloader which has already been added is encountered.
+     */
+    private static void accumulateClassLoaders(final ClassLoader loader, final Collection<ClassLoader> loaders) {
+        // Some implementations may use null to represent the bootstrap class loader.
+        if (loader != null && loaders.add(loader)) {
+            accumulateClassLoaders(loader.getParent(), loaders);
         }
     }
 
@@ -123,8 +212,9 @@ public final class LoaderUtil {
     }
 
     /**
-     * Loads a class by name. This method respects the {@link #IGNORE_TCCL_PROPERTY} Log4j property. If this property is
-     * specified and set to anything besides {@code false}, then the default ClassLoader will be used.
+     * Loads a class by name. This method respects the {@value LoggingSystemProperties#LOADER_IGNORE_THREAD_CONTEXT_LOADER}
+     * Log4j property. If this property is specified and set to anything besides {@code false}, then this class's
+     * ClassLoader will be used as specified by {@link Class#forName(String)}.
      *
      * @param className The class name.
      * @return the Class for the given name.
@@ -136,15 +226,19 @@ public final class LoaderUtil {
             return Class.forName(className);
         }
         try {
-            return getThreadContextClassLoader().loadClass(className);
+            final ClassLoader tccl = getThreadContextClassLoader();
+            if (tccl != null) {
+                return tccl.loadClass(className);
+            }
         } catch (final Throwable ignored) {
-            return Class.forName(className);
         }
+        return Class.forName(className);
     }
 
     /**
      * Loads and instantiates a Class using the default constructor.
      *
+     * @param <T> the type of the class modeled by the {@code Class} object.
      * @param clazz The class.
      * @return new instance of the class.
      * @throws IllegalAccessException if the class can't be instantiated through a public constructor
@@ -166,17 +260,17 @@ public final class LoaderUtil {
      * Loads and instantiates a Class using the default constructor.
      *
      * @param className The class name.
+     * @param <T> The class's type.
      * @return new instance of the class.
      * @throws ClassNotFoundException if the class isn't available to the usual ClassLoaders
      * @throws IllegalAccessException if the class can't be instantiated through a public constructor
      * @throws InstantiationException if there was an exception whilst instantiating the class
-     * @throws NoSuchMethodException if there isn't a no-args constructor on the class
      * @throws InvocationTargetException if there was an exception whilst constructing the class
      * @since 2.1
      */
     @SuppressWarnings("unchecked")
     public static <T> T newInstanceOf(final String className) throws ClassNotFoundException, IllegalAccessException,
-            InstantiationException, NoSuchMethodException, InvocationTargetException {
+            InstantiationException, InvocationTargetException {
         return newInstanceOf((Class<T>) loadClass(className));
     }
 
@@ -190,15 +284,14 @@ public final class LoaderUtil {
      * @throws ClassNotFoundException if the class isn't available to the usual ClassLoaders
      * @throws IllegalAccessException if the class can't be instantiated through a public constructor
      * @throws InstantiationException if there was an exception whilst instantiating the class
-     * @throws NoSuchMethodException if there isn't a no-args constructor on the class
      * @throws InvocationTargetException if there was an exception whilst constructing the class
      * @throws ClassCastException if the constructed object isn't type compatible with {@code T}
      * @since 2.1
      */
     public static <T> T newCheckedInstanceOf(final String className, final Class<T> clazz)
-            throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException,
+            throws ClassNotFoundException, InvocationTargetException, InstantiationException,
             IllegalAccessException {
-        return clazz.cast(newInstanceOf(className));
+        return newInstanceOf(loadClass(className).asSubclass(clazz));
     }
 
     /**
@@ -211,13 +304,12 @@ public final class LoaderUtil {
      * @throws ClassNotFoundException    if the class isn't available to the usual ClassLoaders
      * @throws IllegalAccessException    if the class can't be instantiated through a public constructor
      * @throws InstantiationException    if there was an exception whilst instantiating the class
-     * @throws NoSuchMethodException     if there isn't a no-args constructor on the class
      * @throws InvocationTargetException if there was an exception whilst constructing the class
      * @throws ClassCastException        if the constructed object isn't type compatible with {@code T}
      * @since 2.5
      */
     public static <T> T newCheckedInstanceOfProperty(final String propertyName, final Class<T> clazz)
-        throws ClassNotFoundException, NoSuchMethodException, InvocationTargetException, InstantiationException,
+        throws ClassNotFoundException, InvocationTargetException, InstantiationException,
         IllegalAccessException {
         final String className = PropertiesUtil.getProperties().getStringProperty(propertyName);
         if (className == null) {
@@ -229,10 +321,24 @@ public final class LoaderUtil {
     private static boolean isIgnoreTccl() {
         // we need to lazily initialize this, but concurrent access is not an issue
         if (ignoreTCCL == null) {
-            final String ignoreTccl = PropertiesUtil.getProperties().getStringProperty(IGNORE_TCCL_PROPERTY, null);
+            final String ignoreTccl = PropertiesUtil.getProperties().getStringProperty(LoggingSystemProperties.LOADER_IGNORE_THREAD_CONTEXT_LOADER, null);
             ignoreTCCL = ignoreTccl != null && !"false".equalsIgnoreCase(ignoreTccl.trim());
         }
         return ignoreTCCL;
+    }
+
+    private static boolean isForceTccl() {
+        if (forceTcclOnly == null) {
+            // PropertiesUtil.getProperties() uses that code path so don't use that!
+            try {
+                forceTcclOnly = System.getSecurityManager() == null ?
+                    Boolean.getBoolean(LoggingSystemProperties.LOADER_FORCE_THREAD_CONTEXT_LOADER) :
+                    AccessController.doPrivileged((PrivilegedAction<Boolean>) () -> Boolean.getBoolean(LoggingSystemProperties.LOADER_FORCE_THREAD_CONTEXT_LOADER));
+            } catch (final SecurityException se) {
+                forceTcclOnly = false;
+            }
+        }
+        return forceTcclOnly;
     }
 
     /**
@@ -243,7 +349,11 @@ public final class LoaderUtil {
      * @since 2.1
      */
     public static Collection<URL> findResources(final String resource) {
-        final Collection<UrlResource> urlResources = findUrlResources(resource);
+        return findResources(resource, true);
+    }
+
+    public static Collection<URL> findResources(final String resource, final boolean useTccl) {
+        final Collection<UrlResource> urlResources = findUrlResources(resource, useTccl);
         final Collection<URL> resources = new LinkedHashSet<>(urlResources.size());
         for (final UrlResource urlResource : urlResources) {
             resources.add(urlResource.getUrl());
@@ -251,9 +361,20 @@ public final class LoaderUtil {
         return resources;
     }
 
-    static Collection<UrlResource> findUrlResources(final String resource) {
-        final ClassLoader[] candidates = {getThreadContextClassLoader(), LoaderUtil.class.getClassLoader(),
-                GET_CLASS_LOADER_DISABLED ? null : ClassLoader.getSystemClassLoader()};
+    /**
+     * This method will only find resources that follow the JPMS rules for encapsulation. Resources
+     * on the class path should be found as normal along with resources with no package name in all
+     * modules. Resources within packages in modules must declare those resources open to org.apache.logging.log4j.
+     * @param resource The resource to locate.
+     * @return The located resources.
+     */
+    public static Collection<UrlResource> findUrlResources(final String resource, boolean useTccl) {
+        // @formatter:off
+        final ClassLoader[] candidates = {
+                getThreadContextClassLoader(),
+                isForceTccl() ? null : LoaderUtil.class.getClassLoader(),
+                isForceTccl() || GET_CLASS_LOADER_DISABLED ? null : ClassLoader.getSystemClassLoader()};
+        // @formatter:on
         final Collection<UrlResource> resources = new LinkedHashSet<>();
         for (final ClassLoader cl : candidates) {
             if (cl != null) {
@@ -273,11 +394,11 @@ public final class LoaderUtil {
     /**
      * {@link URL} and {@link ClassLoader} pair.
      */
-    static class UrlResource {
+    public static class UrlResource {
         private final ClassLoader classLoader;
         private final URL url;
 
-        UrlResource(final ClassLoader classLoader, final URL url) {
+        public UrlResource(final ClassLoader classLoader, final URL url) {
             this.classLoader = classLoader;
             this.url = url;
         }
@@ -304,11 +425,7 @@ public final class LoaderUtil {
             if (classLoader != null ? !classLoader.equals(that.classLoader) : that.classLoader != null) {
                 return false;
             }
-            if (url != null ? !url.equals(that.url) : that.url != null) {
-                return false;
-            }
-
-            return true;
+            return url != null ? url.equals(that.url) : that.url == null;
         }
 
         @Override

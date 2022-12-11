@@ -14,7 +14,6 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.perf.jmh;
 
 import java.util.HashMap;
@@ -24,7 +23,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.perf.nogc.OpenHashStringMap;
 import org.apache.logging.log4j.util.SortedArrayStringMap;
-import org.apache.logging.log4j.util.BiConsumer;
 import org.apache.logging.log4j.util.TriConsumer;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -145,12 +143,7 @@ public class SortedArrayVsHashMapBenchmark {
         return new HashMap(populatedMap);
     }
 
-    static TriConsumer<String, Object, int[]> COUNTER = new TriConsumer<String, Object, int[]>() {
-        @Override
-        public void accept(final String s, final Object o, final int[] result) {
-            result[0] += s.hashCode() + o.hashCode();
-        }
-    };
+    static TriConsumer<String, Object, int[]> COUNTER = (s, o, result) -> result[0] += s.hashCode() + o.hashCode();
 
     @Benchmark
     public int iterateArrayContextDataTriConsumer() {
@@ -172,12 +165,7 @@ public class SortedArrayVsHashMapBenchmark {
     public int iterateArrayContextDataBiConsumer() {
         final int[] result = {0};
 
-        populatedSortedStringArrayMap.forEach(new BiConsumer<String, Object>() {
-            @Override
-            public void accept(final String s, final Object o) {
-                result[0] += s.hashCode() + o.hashCode();
-            }
-        });
+        populatedSortedStringArrayMap.forEach((s, o) -> result[0] += s.hashCode() + o.hashCode());
         return result[0];
     }
 
@@ -185,12 +173,7 @@ public class SortedArrayVsHashMapBenchmark {
     public int iterateHashContextDataBiConsumer() {
         final int[] result = {0};
 
-        populatedOpenHashContextData.forEach(new BiConsumer<String, Object>() {
-            @Override
-            public void accept(final String s, final Object o) {
-                result[0] += s.hashCode() + o.hashCode();
-            }
-        });
+        populatedOpenHashContextData.forEach((s, o) -> result[0] += s.hashCode() + o.hashCode());
         return result[0];
     }
 

@@ -19,11 +19,15 @@ package org.apache.logging.log4j.spi;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 import org.apache.logging.log4j.util.BiConsumer;
-import org.apache.logging.log4j.util.ReadOnlyStringMap;
+import org.apache.logging.log4j.util.Cast;
 import org.apache.logging.log4j.util.PropertiesUtil;
+import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.util.TriConsumer;
+
+import static org.apache.logging.log4j.spi.LoggingSystemProperties.THREAD_CONTEXT_MAP_INHERITABLE;
 
 /**
  * The actual ThreadContext Map. A new ThreadContext Map is created each time it is updated and the Map stored is always
@@ -32,42 +36,41 @@ import org.apache.logging.log4j.util.TriConsumer;
  * should be much better than if the Map was copied for each event.
  */
 public class DefaultThreadContextMap implements ThreadContextMap, ReadOnlyStringMap {
+    private static final long serialVersionUID = 8218007901108944053L;
 
     /**
      * Property name ({@value} ) for selecting {@code InheritableThreadLocal} (value "true") or plain
      * {@code ThreadLocal} (value is not "true") in the implementation.
      */
-    public static final String INHERITABLE_MAP = "isThreadContextMapInheritable";
+    public static final String INHERITABLE_MAP = THREAD_CONTEXT_MAP_INHERITABLE;
 
     private final boolean useMap;
     private final ThreadLocal<Map<String, String>> localMap;
+
+    static ThreadLocal<Map<String, String>> createThreadLocalMap(final boolean isMapEnabled, final boolean inheritableMap) {
+        if (inheritableMap) {
+            return new InheritableThreadLocal<>() {
+                @Override
+                protected Map<String, String> childValue(final Map<String, String> parentValue) {
+                    return parentValue != null && isMapEnabled ? Map.copyOf(parentValue) : null;
+                }
+            };
+        }
+        // if not inheritable, return plain ThreadLocal with null as initial value
+        return new ThreadLocal<>();
+    }
 
     public DefaultThreadContextMap() {
         this(true);
     }
 
     public DefaultThreadContextMap(final boolean useMap) {
-        this.useMap = useMap;
-        this.localMap = createThreadLocalMap(useMap);
+        this(useMap, PropertiesUtil.getProperties().getBooleanProperty(THREAD_CONTEXT_MAP_INHERITABLE));
     }
 
-    // LOG4J2-479: by default, use a plain ThreadLocal, only use InheritableThreadLocal if configured.
-    // (This method is package protected for JUnit tests.)
-    static ThreadLocal<Map<String, String>> createThreadLocalMap(final boolean isMapEnabled) {
-        final PropertiesUtil managerProps = PropertiesUtil.getProperties();
-        final boolean inheritable = managerProps.getBooleanProperty(INHERITABLE_MAP);
-        if (inheritable) {
-            return new InheritableThreadLocal<Map<String, String>>() {
-                @Override
-                protected Map<String, String> childValue(final Map<String, String> parentValue) {
-                    return parentValue != null && isMapEnabled //
-                    ? Collections.unmodifiableMap(new HashMap<>(parentValue)) //
-                            : null;
-                }
-            };
-        }
-        // if not inheritable, return plain ThreadLocal with null as initial value
-        return new ThreadLocal<>();
+    DefaultThreadContextMap(final boolean useMap, final boolean inheritableMap) {
+        this.useMap = useMap;
+        this.localMap = createThreadLocalMap(useMap, inheritableMap);
     }
 
     @Override
@@ -76,20 +79,19 @@ public class DefaultThreadContextMap implements ThreadContextMap, ReadOnlyString
             return;
         }
         Map<String, String> map = localMap.get();
-        map = map == null ? new HashMap<String, String>(1) : new HashMap<>(map);
+        map = map == null ? new HashMap<>(1) : new HashMap<>(map);
         map.put(key, value);
         localMap.set(Collections.unmodifiableMap(map));
     }
 
+    @Override
     public void putAll(final Map<String, String> m) {
         if (!useMap) {
             return;
         }
         Map<String, String> map = localMap.get();
-        map = map == null ? new HashMap<String, String>(m.size()) : new HashMap<>(map);
-        for (final Map.Entry<String, String> e : m.entrySet()) {
-            map.put(e.getKey(), e.getValue());
-        }
+        map = map == null ? new HashMap<>(m.size()) : new HashMap<>(map);
+        map.putAll(m);
         localMap.set(Collections.unmodifiableMap(map));
     }
 
@@ -109,6 +111,7 @@ public class DefaultThreadContextMap implements ThreadContextMap, ReadOnlyString
         }
     }
 
+    @Override
     public void removeAll(final Iterable<String> keys) {
         final Map<String, String> map = localMap.get();
         if (map != null) {
@@ -143,7 +146,9 @@ public class DefaultThreadContextMap implements ThreadContextMap, ReadOnlyString
             return;
         }
         for (final Map.Entry<String, String> entry : map.entrySet()) {
-            action.accept(entry.getKey(), (V) entry.getValue());
+            //BiConsumer should be able to handle values of any type V. In our case the values are of type String.
+            final V value = Cast.cast(entry.getValue());
+            action.accept(entry.getKey(), value);
         }
     }
 
@@ -154,21 +159,22 @@ public class DefaultThreadContextMap implements ThreadContextMap, ReadOnlyString
             return;
         }
         for (final Map.Entry<String, String> entry : map.entrySet()) {
-            action.accept(entry.getKey(), (V) entry.getValue(), state);
+            //TriConsumer should be able to handle values of any type V. In our case the values are of type String.
+            final V value = Cast.cast(entry.getValue());
+            action.accept(entry.getKey(), value, state);
         }
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public <V> V getValue(final String key) {
         final Map<String, String> map = localMap.get();
-        return (V) (map == null ? null : map.get(key));
+        return map == null ? null : Cast.cast(map.get(key));
     }
 
     @Override
     public Map<String, String> getCopy() {
         final Map<String, String> map = localMap.get();
-        return map == null ? new HashMap<String, String>() : new HashMap<>(map);
+        return map == null ? new HashMap<>() : new HashMap<>(map);
     }
 
     @Override
@@ -224,13 +230,6 @@ public class DefaultThreadContextMap implements ThreadContextMap, ReadOnlyString
         final ThreadContextMap other = (ThreadContextMap) obj;
         final Map<String, String> map = this.localMap.get();
         final Map<String, String> otherMap = other.getImmutableMapOrNull();
-        if (map == null) {
-            if (otherMap != null) {
-                return false;
-            }
-        } else if (!map.equals(otherMap)) {
-            return false;
-        }
-        return true;
+        return Objects.equals(map, otherMap);
     }
 }

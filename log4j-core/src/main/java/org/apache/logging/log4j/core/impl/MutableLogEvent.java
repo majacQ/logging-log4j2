@@ -19,19 +19,24 @@ package org.apache.logging.log4j.core.impl;
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.util.Arrays;
-import java.util.Map;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.ThreadContext;
-import org.apache.logging.log4j.message.AsynchronouslyFormattable;
-import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.async.InternalAsyncUtil;
+import org.apache.logging.log4j.core.time.Clock;
+import org.apache.logging.log4j.core.time.Instant;
+import org.apache.logging.log4j.core.time.MutableInstant;
+import org.apache.logging.log4j.core.time.NanoClock;
 import org.apache.logging.log4j.core.util.Constants;
 import org.apache.logging.log4j.message.Message;
-import org.apache.logging.log4j.message.ParameterizedMessage;
+import org.apache.logging.log4j.message.ParameterConsumer;
+import org.apache.logging.log4j.message.ParameterVisitable;
 import org.apache.logging.log4j.message.ReusableMessage;
 import org.apache.logging.log4j.message.SimpleMessage;
+import org.apache.logging.log4j.message.TimestampMessage;
+import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.util.StackLocatorUtil;
 import org.apache.logging.log4j.util.StringBuilders;
 import org.apache.logging.log4j.util.StringMap;
@@ -41,12 +46,12 @@ import org.apache.logging.log4j.util.Strings;
  * Mutable implementation of the {@code LogEvent} interface.
  * @since 2.6
  */
-public class MutableLogEvent implements LogEvent, ReusableMessage {
+public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisitable {
     private static final Message EMPTY = new SimpleMessage(Strings.EMPTY);
 
     private int threadPriority;
     private long threadId;
-    private long timeMillis;
+    private final MutableInstant instant = new MutableInstant();
     private long nanoTime;
     private short parameterCount;
     private boolean includeLocation;
@@ -55,6 +60,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
     private String threadName;
     private String loggerName;
     private Message message;
+    private String messageFormat;
     private StringBuilder messageText;
     private Object[] parameters;
     private Throwable thrown;
@@ -67,7 +73,8 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
     transient boolean reserved = false;
 
     public MutableLogEvent() {
-        this(new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE), new Object[10]);
+        // messageText and the parameter array are lazily initialized
+        this(null, null);
     }
 
     public MutableLogEvent(final StringBuilder msgText, final Object[] replacementParameters) {
@@ -75,6 +82,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
         this.parameters = replacementParameters;
     }
 
+    @Override
     public Log4jLogEvent toImmutable() {
         return createMemento();
     }
@@ -94,9 +102,10 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
         this.marker = event.getMarker();
         this.level = event.getLevel();
         this.loggerName = event.getLoggerName();
-        this.timeMillis = event.getTimeMillis();
         this.thrown = event.getThrown();
         this.thrownProxy = event.getThrownProxy();
+
+        this.instant.initFrom(event.getInstant());
 
         // NOTE: this ringbuffer event SHOULD NOT keep a reference to the specified
         // thread-local MutableLogEvent's context data, because then two threads would call
@@ -123,6 +132,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
         level = null;
         loggerName = null;
         message = null;
+        messageFormat = null;
         thrown = null;
         thrownProxy = null;
         source = null;
@@ -143,9 +153,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
         StringBuilders.trimToMaxSize(messageText, Constants.MAX_REUSABLE_MESSAGE_SIZE);
 
         if (parameters != null) {
-            for (int i = 0; i < parameters.length; i++) {
-                parameters[i] = null;
-            }
+            Arrays.fill(parameters, null);
         }
 
         // primitive fields that cannot be cleared:
@@ -199,7 +207,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
     @Override
     public Message getMessage() {
         if (message == null) {
-            return (messageText == null) ? EMPTY : this;
+            return messageText == null ? EMPTY : this;
         }
         return message;
     }
@@ -208,28 +216,17 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
         if (msg instanceof ReusableMessage) {
             final ReusableMessage reusable = (ReusableMessage) msg;
             reusable.formatTo(getMessageTextForWriting());
-            if (parameters != null) {
-                parameters = reusable.swapParameters(parameters);
-                parameterCount = reusable.getParameterCount();
-            }
+            this.messageFormat = msg.getFormat();
+            parameters = reusable.swapParameters(parameters == null ? new Object[10] : parameters);
+            parameterCount = reusable.getParameterCount();
         } else {
-            // if the Message instance is reused, there is no point in freezing its message here
-            if (msg != null && !canFormatMessageInBackground(msg)) {
-                msg.getFormattedMessage(); // LOG4J2-763: ask message to freeze parameters
-            }
-            this.message = msg;
+            this.message = InternalAsyncUtil.makeMessageImmutable(msg);
         }
-    }
-
-    private boolean canFormatMessageInBackground(final Message message) {
-        return Constants.FORMAT_MESSAGES_IN_BACKGROUND // LOG4J2-898: user wants to format all msgs in background
-                || message.getClass().isAnnotationPresent(AsynchronouslyFormattable.class); // LOG4J2-1718
     }
 
     private StringBuilder getMessageTextForWriting() {
         if (messageText == null) {
-            // Should never happen:
-            // only happens if user logs a custom reused message when Constants.ENABLE_THREADLOCALS is false
+            // Happens the first time messageText is requested
             messageText = new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE);
         }
         messageText.setLength(0);
@@ -249,7 +246,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
      */
     @Override
     public String getFormat() {
-        return null;
+        return messageFormat;
     }
 
     /**
@@ -258,6 +255,15 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
     @Override
     public Object[] getParameters() {
         return parameters == null ? null : Arrays.copyOf(parameters, parameterCount);
+    }
+
+    @Override
+    public <S> void forEachParameter(final ParameterConsumer<S> action, final S state) {
+        if (parameters != null) {
+            for (short i = 0; i < parameterCount; i++) {
+                action.accept(parameters[i], i, state);
+            }
+        }
     }
 
     /**
@@ -299,11 +305,10 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
 
     @Override
     public Message memento() {
-        if (message != null) {
-            return message;
+        if (message == null) {
+            message = new MementoMessage(String.valueOf(messageText), messageFormat, getParameters());
         }
-        final Object[] params = parameters == null ? new Object[0] : Arrays.copyOf(parameters, parameterCount);
-        return new ParameterizedMessage(messageText.toString(), params);
+        return message;
     }
 
     @Override
@@ -315,13 +320,27 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
         this.thrown = thrown;
     }
 
+    void initTime(final Clock clock, final NanoClock nanoClock) {
+        if (message instanceof TimestampMessage) {
+            instant.initFromEpochMilli(((TimestampMessage) message).getTimestamp(), 0);
+        } else {
+            instant.initFrom(clock);
+        }
+        nanoTime = nanoClock.nanoTime();
+    }
+
     @Override
     public long getTimeMillis() {
-        return timeMillis;
+        return instant.getEpochMillisecond();
     }
 
     public void setTimeMillis(final long timeMillis) {
-        this.timeMillis = timeMillis;
+        this.instant.initFromEpochMilli(timeMillis, 0);
+    }
+
+    @Override
+    public Instant getInstant() {
+        return instant;
     }
 
     /**
@@ -334,6 +353,10 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
             thrownProxy = new ThrowableProxy(thrown);
         }
         return thrownProxy;
+    }
+
+    public void setSource(final StackTraceElement source) {
+        this.source = source;
     }
 
     /**
@@ -357,11 +380,6 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
     @Override
     public ReadOnlyStringMap getContextData() {
         return contextData;
-    }
-
-    @Override
-    public Map<String, String> getContextMap() {
-        return contextData.toMap();
     }
 
     public void setContextData(final StringMap mutableContextData) {
@@ -468,7 +486,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
                 .setLoggerFqcn(loggerFqcn) //
                 .setLoggerName(loggerName) //
                 .setMarker(marker) //
-                .setMessage(getNonNullImmutableMessage()) // ensure non-null & immutable
+                .setMessage(memento()) // ensure non-null & immutable
                 .setNanoTime(nanoTime) //
                 .setSource(source) //
                 .setThreadId(threadId) //
@@ -476,10 +494,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage {
                 .setThreadPriority(threadPriority) //
                 .setThrown(getThrown()) // may deserialize from thrownProxy
                 .setThrownProxy(thrownProxy) // avoid unnecessarily creating thrownProxy
-                .setTimeMillis(timeMillis);
-    }
-
-    private Message getNonNullImmutableMessage() {
-        return message != null ? message : new SimpleMessage(String.valueOf(messageText));
+                .setInstant(instant) //
+        ;
     }
 }

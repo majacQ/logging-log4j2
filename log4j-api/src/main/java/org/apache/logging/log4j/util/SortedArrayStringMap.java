@@ -22,7 +22,12 @@ import java.io.IOException;
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.StreamCorruptedException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Map;
@@ -62,17 +67,12 @@ public class SortedArrayStringMap implements IndexedStringMap {
     private static final long serialVersionUID = -5748905872274478116L;
     private static final int HASHVAL = 31;
 
-    private static final TriConsumer<String, Object, StringMap> PUT_ALL = new TriConsumer<String, Object, StringMap>() {
-        @Override
-        public void accept(final String key, final Object value, final StringMap contextData) {
-            contextData.putValue(key, value);
-        }
-    };
+    private static final TriConsumer<String, Object, StringMap> PUT_ALL = (key, value, contextData) -> contextData.putValue(key, value);
 
     /**
      * An empty array instance to share when the table is not inflated.
      */
-    private static final String[] EMPTY = {};
+    private static final String[] EMPTY = Strings.EMPTY_ARRAY;
     private static final String FROZEN = "Frozen collection cannot be modified";
 
     private transient String[] keys = EMPTY;
@@ -82,6 +82,41 @@ public class SortedArrayStringMap implements IndexedStringMap {
      * The number of key-value mappings contained in this map.
      */
     private transient int size;
+
+    private static final Method setObjectInputFilter;
+    private static final Method getObjectInputFilter;
+    private static final Method newObjectInputFilter;
+
+    static {
+        Method[] methods = ObjectInputStream.class.getMethods();
+        Method setMethod = null;
+        Method getMethod = null;
+        for (final Method method : methods) {
+            if (method.getName().equals("setObjectInputFilter")) {
+                setMethod = method;
+            } else if (method.getName().equals("getObjectInputFilter")) {
+                getMethod = method;
+            }
+        }
+        Method newMethod = null;
+        try {
+            if (setMethod != null) {
+                final Class<?> clazz = Class.forName("org.apache.logging.log4j.internal.DefaultObjectInputFilter");
+                methods = clazz.getMethods();
+                for (final Method method : methods) {
+                    if (method.getName().equals("newInstance") && Modifier.isStatic(method.getModifiers())) {
+                        newMethod = method;
+                        break;
+                    }
+                }
+            }
+        } catch (final ClassNotFoundException ex) {
+            // Ignore the exception
+        }
+        newObjectInputFilter = newMethod;
+        setObjectInputFilter = setMethod;
+        getObjectInputFilter = getMethod;
+    }
 
     /**
      * The next size value at which to resize (capacity * load factor).
@@ -98,10 +133,10 @@ public class SortedArrayStringMap implements IndexedStringMap {
     }
 
     public SortedArrayStringMap(final int initialCapacity) {
-        if (initialCapacity < 1) {
-            throw new IllegalArgumentException("Initial capacity must be at least one but was " + initialCapacity);
+        if (initialCapacity < 0) {
+            throw new IllegalArgumentException("Initial capacity must be at least zero but was " + initialCapacity);
         }
-        threshold = ceilingNextPowerOfTwo(initialCapacity);
+        threshold = ceilingNextPowerOfTwo(initialCapacity == 0 ? 1 : initialCapacity);
     }
 
     public SortedArrayStringMap(final ReadOnlyStringMap other) {
@@ -116,8 +151,17 @@ public class SortedArrayStringMap implements IndexedStringMap {
     public SortedArrayStringMap(final Map<String, ?> map) {
         resize(ceilingNextPowerOfTwo(map.size()));
         for (final Map.Entry<String, ?> entry : map.entrySet()) {
-            putValue(entry.getKey(), entry.getValue());
+            // The key might not actually be a String.
+            putValue(Objects.toString(entry.getKey(), null), entry.getValue());
         }
+    }
+
+    /**
+     * For unit testing.
+     * @return The threshold.
+     */
+    public int getThreshold() {
+        return threshold;
     }
 
     private void assertNotFrozen() {
@@ -462,6 +506,9 @@ public class SortedArrayStringMap implements IndexedStringMap {
      * Save the state of the {@code SortedArrayStringMap} instance to a stream (i.e.,
      * serialize it).
      *
+     * @param s The ObjectOutputStream.
+     * @throws IOException if there is an error serializing the object to the stream.
+     *
      * @serialData The <i>capacity</i> of the SortedArrayStringMap (the length of the
      *             bucket array) is emitted (int), followed by the
      *             <i>size</i> (an int, the number of key-value
@@ -497,22 +544,41 @@ public class SortedArrayStringMap implements IndexedStringMap {
         }
     }
 
-    private static byte[] marshall(Object obj) throws IOException {
+    private static byte[] marshall(final Object obj) throws IOException {
         if (obj == null) {
             return null;
         }
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        try (ObjectOutputStream oos = new ObjectOutputStream(bout)) {
+        final ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        try (final ObjectOutputStream oos = new ObjectOutputStream(bout)) {
             oos.writeObject(obj);
             oos.flush();
             return bout.toByteArray();
         }
     }
 
-    private static Object unmarshall(byte[] data) throws IOException, ClassNotFoundException {
-        ByteArrayInputStream bin = new ByteArrayInputStream(data);
-        try (ObjectInputStream ois = new ObjectInputStream(bin)) {
+    @SuppressWarnings("BanSerializableRead")
+    private static Object unmarshall(final byte[] data, final ObjectInputStream inputStream)
+            throws IOException, ClassNotFoundException {
+        final ByteArrayInputStream bin = new ByteArrayInputStream(data);
+        Collection<String> allowedClasses = null;
+        final ObjectInputStream ois;
+        if (inputStream instanceof FilteredObjectInputStream) {
+            allowedClasses = ((FilteredObjectInputStream) inputStream).getAllowedClasses();
+            ois = new FilteredObjectInputStream(bin, allowedClasses);
+        } else {
+            try {
+                final Object obj = getObjectInputFilter.invoke(inputStream);
+                final Object filter = newObjectInputFilter.invoke(null, obj);
+                ois = new ObjectInputStream(bin);
+                setObjectInputFilter.invoke(ois, filter);
+            } catch (final IllegalAccessException | InvocationTargetException ex) {
+                throw new StreamCorruptedException("Unable to set ObjectInputFilter on stream");
+            }
+        }
+        try {
             return ois.readObject();
+        } finally {
+            ois.close();
         }
     }
 
@@ -532,8 +598,14 @@ public class SortedArrayStringMap implements IndexedStringMap {
     /**
      * Reconstitute the {@code SortedArrayStringMap} instance from a stream (i.e.,
      * deserialize it).
+     * @param s The ObjectInputStream.
+     * @throws IOException If there is an error reading the input stream.
+     * @throws ClassNotFoundException if the class to be instantiated could not be found.
      */
     private void readObject(final java.io.ObjectInputStream s)  throws IOException, ClassNotFoundException {
+        if (!(s instanceof FilteredObjectInputStream) && setObjectInputFilter == null) {
+            throw new IllegalArgumentException("readObject requires a FilteredObjectInputStream or an ObjectInputStream that accepts an ObjectInputFilter");
+        }
         // Read in the threshold (ignored), and any hidden stuff
         s.defaultReadObject();
 
@@ -565,7 +637,7 @@ public class SortedArrayStringMap implements IndexedStringMap {
             keys[i] = (String) s.readObject();
             try {
                 final byte[] marshalledObject = (byte[]) s.readObject();
-                values[i] = marshalledObject == null ? null : unmarshall(marshalledObject);
+                values[i] = marshalledObject == null ? null : unmarshall(marshalledObject, s);
             } catch (final Exception | LinkageError error) {
                 handleSerializationException(error, i, keys[i]);
                 values[i] = null;

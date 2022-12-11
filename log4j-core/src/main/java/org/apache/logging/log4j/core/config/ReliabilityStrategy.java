@@ -42,6 +42,22 @@ public interface ReliabilityStrategy {
      */
     void log(Supplier<LoggerConfig> reconfigured, String loggerName, String fqcn, Marker marker, Level level,
             Message data, Throwable t);
+    /**
+     * Logs an event.
+     *
+     * @param reconfigured supplies the next LoggerConfig if the strategy's LoggerConfig is no longer active
+     * @param loggerName The name of the Logger.
+     * @param fqcn The fully qualified class name of the caller.
+     * @param location The location of the caller or null.
+     * @param marker A Marker or null if none is present.
+     * @param level The event Level.
+     * @param data The Message.
+     * @param t A Throwable or null.
+     * @since 3.0
+     */
+    default void log(final Supplier<LoggerConfig> reconfigured, final String loggerName, final String fqcn, final StackTraceElement location,
+                     final Marker marker, final Level level, final Message data, final Throwable t) {
+    }
 
     /**
      * Logs an event.
@@ -53,7 +69,7 @@ public interface ReliabilityStrategy {
 
     /**
      * For internal use by the ReliabilityStrategy; returns the LoggerConfig to use.
-     * 
+     *
      * @param next supplies the next LoggerConfig if the strategy's LoggerConfig is no longer active
      * @return the currently active LoggerConfig
      */
@@ -71,7 +87,7 @@ public interface ReliabilityStrategy {
 
     /**
      * Called before the configuration is stopped.
-     * 
+     *
      * @param configuration the configuration that will be stopped
      */
     void beforeStopConfiguration(Configuration configuration);

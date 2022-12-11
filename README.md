@@ -1,39 +1,41 @@
-# [Apache Log4j 2](https://logging.apache.org/log4j/2.x/)
+<!---
+ Licensed to the Apache Software Foundation (ASF) under one or more
+ contributor license agreements.  See the NOTICE file distributed with
+ this work for additional information regarding copyright ownership.
+ The ASF licenses this file to You under the Apache License, Version 2.0
+ (the "License"); you may not use this file except in compliance with
+ the License.  You may obtain a copy of the License at
 
-Apache Log4j 2 is an upgrade to Log4j that provides significant improvements over its predecessor, Log4j 1.x,
+      http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+
+# [Apache Log4j 3.x](https://logging.apache.org/log4j/2.x/)
+
+Apache Log4j 3.x is an upgrade to Log4j that provides significant improvements over its predecessor, Log4j 1.x,
 and provides many of the improvements available in Logback while fixing some inherent problems in Logback's architecture.
 
-[![Jenkins Status](https://builds.apache.org/buildStatus/icon?job=Log4j 2.x)](https://builds.apache.org/job/Log4j%202.x/)
-[![Travis Status](https://travis-ci.org/apache/logging-log4j2.svg?branch=master)](https://travis-ci.org/apache/logging-log4j2)
-[![Coverage Status](https://coveralls.io/repos/github/apache/logging-log4j2/badge.svg?branch=master)](https://coveralls.io/github/apache/logging-log4j2?branch=master)
+[![GitHub build (3.x)](https://img.shields.io/github/workflow/status/apache/logging-log4j2/build/master?label=3.x&logo=github)](https://github.com/apache/logging-log4j2/actions?query=workflow%3AMaven+branch%3Amaster)
+[![GitHub build (2.x)](https://img.shields.io/github/workflow/status/apache/logging-log4j2/build/release-2.x?label=2.x&logo=github)](https://github.com/apache/logging-log4j2/actions?query=workflow%3AMaven+branch%3Arelease-2.x)
+[![Latest Maven Central release](https://img.shields.io/maven-central/v/org.apache.logging.log4j/log4j-api.svg?logo=java)](http://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-api)
+
+
+## Pull Requests on Github
+
+By sending a pull request you grant the Apache Software Foundation sufficient rights to use and release the submitted 
+work under the Apache license. You grant the same rights (copyright license, patent license, etc.) to the 
+Apache Software Foundation as if you have signed a Contributor License Agreement. For contributions that are 
+judged to be non-trivial, you will be asked to actually sign a [Contributor License Agreement](https://www.apache.org/licenses/icla.pdf).
 
 ## Usage
 
-Maven users can add the following dependencies to their `pom.xml` file:
-
-```xml
-<dependencies>
-  <dependency>
-    <groupId>org.apache.logging.log4j</groupId>
-    <artifactId>log4j-api</artifactId>
-    <version>2.8</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.logging.log4j</groupId>
-    <artifactId>log4j-core</artifactId>
-    <version>2.8</version>
-  </dependency>
-</dependencies>
-```
-
-Gradle users can add the following to their `build.gradle` file:
-
-```gradle
-dependencies {
-  compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.8'
-  compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.8'
-}
-```
+Users should refer to [Maven, Ivy, Gradle, and SBT Artifacts](http://logging.apache.org/log4j/2.x/maven-artifacts.html)
+on the Log4j web site for instructions on how to include Log4j into their project using their chosen build tool.
 
 Basic usage of the `Logger` API:
 
@@ -79,42 +81,38 @@ And an example `log4j2.xml` configuration file:
 
 ## Documentation
 
-The Log4j 2 User's Guide is available [here](https://logging.apache.org/log4j/2.x/manual/index.html) or as a downloadable
+The Log4j 3.x User's Guide is available [here](https://logging.apache.org/log4j/2.x/manual/index.html) or as a downloadable
 [PDF](https://logging.apache.org/log4j/2.x/log4j-users-guide.pdf).
 
 ## Requirements
 
-Log4j 2.4 and greater requires Java 7, versions 2.0-alpha1 to 2.3 required Java 6.
+Log4j 3.0 and greater requires Java 11.
 Some features require optional dependencies; the documentation for these features specifies the dependencies.
 
 ## License
 
-Apache Log4j 2 is distributed under the [Apache License, version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
+Apache Log4j 3.x is distributed under the [Apache License, version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html).
 
 ## Download
 
 [How to download Log4j](http://logging.apache.org/log4j/2.x/download.html),
 and [how to use it from Maven, Ivy and Gradle](http://logging.apache.org/log4j/2.x/maven-artifacts.html).
-You can access the latest development snapshot by using the Maven repository `https://repository.apache.org/snapshots`, 
+You can access the latest development snapshot by using the Maven repository `https://repository.apache.org/snapshots`,
 see [Snapshot builds](https://logging.apache.org/log4j/2.x/maven-artifacts.html#Snapshot_builds).
 
 ## Issue Tracking
 
-Issues, bugs, and feature requests should be submitted to the 
+Issues, bugs, and feature requests should be submitted to the
 [JIRA issue tracking system for this project](https://issues.apache.org/jira/browse/LOG4J2).
 
-Pull request on GitHub are welcome, but please open a ticket in the JIRA issue tracker first, and mention the 
+Pull requests on GitHub are welcome, but please open a ticket in the JIRA issue tracker first, and mention the 
 JIRA issue in the Pull Request.
 
 ## Building From Source
 
-Log4j requires Apache Maven 3.x. To build from source and install to your local Maven repository, execute the following:
-
-```sh
-mvn install
-```
+See [the detailed build instructions](BUILDING.md) on how to build to the project and website from sources.
 
 ## Contributing
 
-We love contributions! Take a look at
-[our contributing page](https://github.com/apache/logging-log4j2/blob/master/CONTRIBUTING.md).
+We love contributions!
+Take a look at [our contributing page](CONTRIBUTING.md).

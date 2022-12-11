@@ -16,15 +16,50 @@
  */
 package org.apache.logging.log4j.core.selector;
 
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.plugins.di.Key;
+
 import java.net.URI;
 import java.util.List;
-
-import org.apache.logging.log4j.core.LoggerContext;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Interface used to locate a LoggerContext.
  */
 public interface ContextSelector {
+
+    long DEFAULT_STOP_TIMEOUT = 50;
+
+    Key<ContextSelector> KEY = new Key<>() {};
+
+    /**
+     * Shuts down the LoggerContext.
+     * @param fqcn The fully qualified class name of the caller.
+     * @param loader The ClassLoader to use or null.
+     * @param currentContext If true returns the current Context, if false returns the Context appropriate
+     * @param allContexts if true all LoggerContexts that can be located will be shutdown.
+     * @since 2.13.0
+     */
+    default void shutdown(final String fqcn, final ClassLoader loader, final boolean currentContext,
+                          final boolean allContexts) {
+        if (hasContext(fqcn, loader, currentContext)) {
+           getContext(fqcn, loader, currentContext).stop(DEFAULT_STOP_TIMEOUT, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    /**
+     * Checks to see if a LoggerContext is installed. The default implementation returns false.
+     * @param fqcn The fully qualified class name of the caller.
+     * @param loader The ClassLoader to use or null.
+     * @param currentContext If true returns the current Context, if false returns the Context appropriate
+     * for the caller if a more appropriate Context can be determined.
+     * @return true if a LoggerContext has been installed, false otherwise.
+     * @since 2.13.0
+     */
+    default boolean hasContext(final String fqcn, final ClassLoader loader, final boolean currentContext) {
+        return false;
+    }
 
     /**
      * Returns the LoggerContext.
@@ -40,12 +75,48 @@ public interface ContextSelector {
      * Returns the LoggerContext.
      * @param fqcn The fully qualified class name of the caller.
      * @param loader ClassLoader to use or null.
+     * @param entry An entry for the external Context map.
+     * @param currentContext If true returns the current Context, if false returns the Context appropriate
+     * for the caller if a more appropriate Context can be determined.
+     * @return The LoggerContext.
+     */
+    default LoggerContext getContext(final String fqcn, final ClassLoader loader, final Map.Entry<String, Object> entry, final boolean currentContext) {
+        final LoggerContext lc = getContext(fqcn, loader, currentContext);
+        if (entry != null) {
+            lc.putObject(entry.getKey(), entry.getValue());
+        }
+        return lc;
+    }
+
+
+    /**
+     * Returns the LoggerContext.
+     * @param fqcn The fully qualified class name of the caller.
+     * @param loader ClassLoader to use or null.
      * @param currentContext If true returns the current Context, if false returns the Context appropriate
      * for the caller if a more appropriate Context can be determined.
      * @param configLocation The location of the configuration for the LoggerContext.
      * @return The LoggerContext.
      */
     LoggerContext getContext(String fqcn, ClassLoader loader, boolean currentContext, URI configLocation);
+
+    /**
+     * Returns the LoggerContext.
+     * @param fqcn The fully qualified class name of the caller.
+     * @param loader ClassLoader to use or null.
+     * @param currentContext If true returns the current Context, if false returns the Context appropriate
+     * for the caller if a more appropriate Context can be determined.
+     * @param configLocation The location of the configuration for the LoggerContext.
+     * @return The LoggerContext.
+     */
+    default LoggerContext getContext(final String fqcn, final ClassLoader loader, final Map.Entry<String, Object> entry,
+            final boolean currentContext, final URI configLocation) {
+        final LoggerContext lc = getContext(fqcn, loader, currentContext, configLocation);
+        if (entry != null) {
+            lc.putObject(entry.getKey(), entry.getValue());
+        }
+        return lc;
+    }
 
     /**
      * Returns a List of all the available LoggerContexts.
@@ -58,4 +129,16 @@ public interface ContextSelector {
      * @param context The context to remove.
      */
     void removeContext(LoggerContext context);
+
+    /**
+     * Determines whether or not this ContextSelector depends on the callers classloader.
+     * This method should be overridden by implementations, however a default method is provided which always
+     * returns {@code true} to preserve the old behavior.
+     *
+     * @return true if the class loader is required.
+     * @since 2.15.0
+     */
+    default boolean isClassLoaderDependent() {
+        return true;
+    }
 }

@@ -16,8 +16,9 @@
  */
 package org.apache.logging.log4j.spi;
 
+import java.util.HashSet;
 import java.util.Map;
-import java.util.WeakHashMap;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -28,16 +29,16 @@ import org.apache.logging.log4j.util.LoaderUtil;
 
 /**
  * Provides an abstract base class to use for implementing LoggerAdapter.
- * 
+ *
  * @param <L> the Logger class to adapt
  * @since 2.1
  */
-public abstract class AbstractLoggerAdapter<L> implements LoggerAdapter<L> {
+public abstract class AbstractLoggerAdapter<L> implements LoggerAdapter<L>, LoggerContextShutdownAware {
 
     /**
      * A map to store loggers for their given LoggerContexts.
      */
-    protected final Map<LoggerContext, ConcurrentMap<String, L>> registry = new WeakHashMap<>();
+    protected final Map<LoggerContext, ConcurrentMap<String, L>> registry = new ConcurrentHashMap<>();
 
     private final ReadWriteLock lock = new ReentrantReadWriteLock (true);
 
@@ -51,6 +52,11 @@ public abstract class AbstractLoggerAdapter<L> implements LoggerAdapter<L> {
         }
         loggers.putIfAbsent(name, newLogger(name, context));
         return loggers.get(name);
+    }
+
+    @Override
+    public void contextShutdown(final LoggerContext loggerContext) {
+        registry.remove(loggerContext);
     }
 
     /**
@@ -70,19 +76,29 @@ public abstract class AbstractLoggerAdapter<L> implements LoggerAdapter<L> {
 
         if (loggers != null) {
             return loggers;
-        } else {
-            lock.writeLock ().lock ();
-            try {
-                loggers = registry.get (context);
-                if (loggers == null) {
-                    loggers = new ConcurrentHashMap<> ();
-                    registry.put (context, loggers);
-                }
-                return loggers;
-            } finally {
-                lock.writeLock ().unlock ();
-            }
         }
+        lock.writeLock ().lock ();
+        try {
+            loggers = registry.get (context);
+            if (loggers == null) {
+                loggers = new ConcurrentHashMap<> ();
+                registry.put (context, loggers);
+                if (context instanceof LoggerContextShutdownEnabled) {
+                    ((LoggerContextShutdownEnabled) context).addShutdownListener(this);
+                }
+            }
+            return loggers;
+        } finally {
+            lock.writeLock ().unlock ();
+        }
+    }
+
+    /**
+     * For unit testing. Consider to be private.
+     * @return The Set of LoggerContexts.
+     */
+    public Set<LoggerContext> getLoggerContexts() {
+        return new HashSet<>(registry.keySet());
     }
 
     /**

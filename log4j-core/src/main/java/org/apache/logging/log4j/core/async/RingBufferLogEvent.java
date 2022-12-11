@@ -18,7 +18,6 @@ package org.apache.logging.log4j.core.async;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Map;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
@@ -26,11 +25,16 @@ import org.apache.logging.log4j.ThreadContext.ContextStack;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.impl.ContextDataFactory;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
+import org.apache.logging.log4j.core.impl.MementoMessage;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
+import org.apache.logging.log4j.core.time.Clock;
+import org.apache.logging.log4j.core.time.Instant;
+import org.apache.logging.log4j.core.time.MutableInstant;
+import org.apache.logging.log4j.core.time.NanoClock;
 import org.apache.logging.log4j.core.util.Constants;
-import org.apache.logging.log4j.message.AsynchronouslyFormattable;
 import org.apache.logging.log4j.message.Message;
-import org.apache.logging.log4j.message.ParameterizedMessage;
+import org.apache.logging.log4j.message.ParameterConsumer;
+import org.apache.logging.log4j.message.ParameterVisitable;
 import org.apache.logging.log4j.message.ReusableMessage;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.apache.logging.log4j.message.TimestampMessage;
@@ -41,11 +45,13 @@ import org.apache.logging.log4j.util.Strings;
 
 import com.lmax.disruptor.EventFactory;
 
+import static org.apache.logging.log4j.util.Constants.isThreadLocalsEnabled;
+
 /**
  * When the Disruptor is started, the RingBuffer is populated with event objects. These objects are then re-used during
  * the life of the RingBuffer.
  */
-public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequence {
+public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequence, ParameterVisitable {
 
     /** The {@code EventFactory} for {@code RingBufferLogEvent}s. */
     public static final Factory FACTORY = new Factory();
@@ -60,18 +66,14 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
 
         @Override
         public RingBufferLogEvent newInstance() {
-            final RingBufferLogEvent result = new RingBufferLogEvent();
-            if (Constants.ENABLE_THREADLOCALS) {
-                result.messageText = new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE);
-                result.parameters = new Object[10];
-            }
-            return result;
+            return new RingBufferLogEvent();
         }
     }
 
+    private boolean populated;
     private int threadPriority;
     private long threadId;
-    private long currentTimeMillis;
+    private final MutableInstant instant = new MutableInstant();
     private long nanoTime;
     private short parameterCount;
     private boolean includeLocation;
@@ -80,6 +82,7 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
     private String threadName;
     private String loggerName;
     private Message message;
+    private String messageFormat;
     private StringBuilder messageText;
     private Object[] parameters;
     private transient Throwable thrown;
@@ -93,18 +96,18 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
     private transient AsyncLogger asyncLogger;
 
     public void setValues(final AsyncLogger anAsyncLogger, final String aLoggerName, final Marker aMarker,
-            final String theFqcn, final Level aLevel, final Message msg, final Throwable aThrowable,
-            final StringMap mutableContextData, final ContextStack aContextStack, final long threadId,
-            final String threadName, final int threadPriority, final StackTraceElement aLocation,
-            final long aCurrentTimeMillis, final long aNanoTime) {
+                          final String theFqcn, final Level aLevel, final Message msg, final Throwable aThrowable,
+                          final StringMap mutableContextData, final ContextStack aContextStack, final long threadId,
+                          final String threadName, final int threadPriority, final StackTraceElement aLocation,
+                          final Clock clock, final NanoClock nanoClock) {
         this.threadPriority = threadPriority;
         this.threadId = threadId;
-        this.currentTimeMillis = aCurrentTimeMillis;
-        this.nanoTime = aNanoTime;
         this.level = aLevel;
         this.threadName = threadName;
         this.loggerName = aLoggerName;
         setMessage(msg);
+        initTime(clock);
+        this.nanoTime = nanoClock.nanoTime();
         this.thrown = aThrowable;
         this.thrownProxy = null;
         this.marker = aMarker;
@@ -113,6 +116,15 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
         this.contextData = mutableContextData;
         this.contextStack = aContextStack;
         this.asyncLogger = anAsyncLogger;
+        this.populated = true;
+    }
+
+    private void initTime(final Clock clock) {
+        if (message instanceof TimestampMessage) {
+            instant.initFromEpochMilli(((TimestampMessage) message).getTimestamp(), 0);
+        } else {
+            instant.initFrom(clock);
+        }
     }
 
     @Override
@@ -124,28 +136,18 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
         if (msg instanceof ReusableMessage) {
             final ReusableMessage reusable = (ReusableMessage) msg;
             reusable.formatTo(getMessageTextForWriting());
-            if (parameters != null) {
-                parameters = reusable.swapParameters(parameters);
-                parameterCount = reusable.getParameterCount();
-            }
+            messageFormat = reusable.getFormat();
+            parameters = reusable.swapParameters(parameters == null ? new Object[10] : parameters);
+            parameterCount = reusable.getParameterCount();
         } else {
-            // if the Message instance is reused, there is no point in freezing its message here
-            if (msg != null && !canFormatMessageInBackground(msg)) {
-                msg.getFormattedMessage(); // LOG4J2-763: ask message to freeze parameters
-            }
-            this.message = msg;
+            this.message = InternalAsyncUtil.makeMessageImmutable(msg);
         }
-    }
-
-    private boolean canFormatMessageInBackground(final Message message) {
-        return Constants.FORMAT_MESSAGES_IN_BACKGROUND // LOG4J2-898: user wants to format all msgs in background
-                || message.getClass().isAnnotationPresent(AsynchronouslyFormattable.class); // LOG4J2-1718
     }
 
     private StringBuilder getMessageTextForWriting() {
         if (messageText == null) {
-            // Should never happen:
-            // only happens if user logs a custom reused message when Constants.ENABLE_THREADLOCALS is false
+            // Happens the first time messageText is requested or if a user logs
+            // a custom reused message when Constants.ENABLE_THREADLOCALS is false
             messageText = new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE);
         }
         messageText.setLength(0);
@@ -160,6 +162,13 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
     public void execute(final boolean endOfBatch) {
         this.endOfBatch = endOfBatch;
         asyncLogger.actualAsyncLog(this);
+    }
+
+    /**
+     * @return {@code true} if this event is populated with data, {@code false} otherwise
+     */
+    public boolean isPopulated() {
+        return populated;
     }
 
     /**
@@ -233,7 +242,7 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
      */
     @Override
     public String getFormat() {
-        return null;
+        return messageFormat;
     }
 
     /**
@@ -282,12 +291,20 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
     }
 
     @Override
-    public Message memento() {
-        if (message != null) {
-            return message;
+    public <S> void forEachParameter(final ParameterConsumer<S> action, final S state) {
+        if (parameters != null) {
+            for (short i = 0; i < parameterCount; i++) {
+                action.accept(parameters[i], i, state);
+            }
         }
-        final Object[] params = parameters == null ? new Object[0] : Arrays.copyOf(parameters, parameterCount);
-        return new ParameterizedMessage(messageText.toString(), params);
+    }
+
+    @Override
+    public Message memento() {
+        if (message == null) {
+            message = new MementoMessage(String.valueOf(messageText), messageFormat, getParameters());
+        }
+        return message;
     }
 
     // CharSequence impl
@@ -305,11 +322,6 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
     @Override
     public CharSequence subSequence(final int start, final int end) {
         return messageText.subSequence(start, end);
-    }
-
-
-    private Message getNonNullImmutableMessage() {
-        return message != null ? message : new SimpleMessage(String.valueOf(messageText));
     }
 
     @Override
@@ -344,12 +356,6 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
         this.contextData = contextData;
     }
 
-    @SuppressWarnings("unchecked")
-    @Override
-    public Map<String, String> getContextMap() {
-        return contextData.toMap();
-    }
-
     @Override
     public ContextStack getContextStack() {
         return contextStack;
@@ -377,7 +383,12 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
 
     @Override
     public long getTimeMillis() {
-        return message instanceof TimestampMessage ? ((TimestampMessage) message).getTimestamp() :currentTimeMillis;
+        return message instanceof TimestampMessage ? ((TimestampMessage) message).getTimestamp() : instant.getEpochMillisecond();
+    }
+
+    @Override
+    public Instant getInstant() {
+        return instant;
     }
 
     @Override
@@ -389,12 +400,15 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
      * Release references held by ring buffer to allow objects to be garbage-collected.
      */
     public void clear() {
+        this.populated = false;
+
         this.asyncLogger = null;
         this.loggerName = null;
         this.marker = null;
         this.fqcn = null;
         this.level = null;
         this.message = null;
+        this.messageFormat = null;
         this.thrown = null;
         this.thrownProxy = null;
         this.contextStack = null;
@@ -408,12 +422,18 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
         }
 
         // ensure that excessively long char[] arrays are not kept in memory forever
-        StringBuilders.trimToMaxSize(messageText, Constants.MAX_REUSABLE_MESSAGE_SIZE);
+        if (isThreadLocalsEnabled()) {
+            StringBuilders.trimToMaxSize(messageText, Constants.MAX_REUSABLE_MESSAGE_SIZE);
 
-        if (parameters != null) {
-            for (int i = 0; i < parameters.length; i++) {
-                parameters[i] = null;
+            if (parameters != null) {
+                Arrays.fill(parameters, null);
             }
+        } else {
+            // A user may have manually logged a ReusableMessage implementation, when thread locals are
+            // disabled we remove the reference in order to avoid permanently holding references to these
+            // buffers.
+            messageText = null;
+            parameters = null;
         }
     }
 
@@ -445,7 +465,7 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
                 .setLoggerFqcn(fqcn) //
                 .setLoggerName(loggerName) //
                 .setMarker(marker) //
-                .setMessage(getNonNullImmutableMessage()) // ensure non-null & immutable
+                .setMessage(memento()) // ensure non-null & immutable
                 .setNanoTime(nanoTime) //
                 .setSource(location) //
                 .setThreadId(threadId) //
@@ -453,7 +473,8 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
                 .setThreadPriority(threadPriority) //
                 .setThrown(getThrown()) // may deserialize from thrownProxy
                 .setThrownProxy(thrownProxy) // avoid unnecessarily creating thrownProxy
-                .setTimeMillis(currentTimeMillis);
+                .setInstant(instant) //
+        ;
     }
 
 }

@@ -21,11 +21,11 @@ import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.util.PerformanceSensitive;
 
 /**
@@ -38,12 +38,13 @@ import org.apache.logging.log4j.util.PerformanceSensitive;
  * The default Levels are both {@link Level#ERROR ERROR}.
  * </p>
  */
-@Plugin(name = "LevelRangeFilter", category = Node.CATEGORY, elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Plugin
 @PerformanceSensitive("allocation")
 public final class LevelRangeFilter extends AbstractFilter {
 
     /**
-     * Create a ThresholdFilter.
+     * Creates a ThresholdFilter.
      *
      * @param minLevel
      *            The minimum log Level.
@@ -55,13 +56,14 @@ public final class LevelRangeFilter extends AbstractFilter {
      *            The action to take on a mismatch.
      * @return The created ThresholdFilter.
      */
+    // TODO Consider refactoring to use AbstractFilter.AbstractFilterBuilder
     @PluginFactory
     public static LevelRangeFilter createFilter(
             // @formatter:off
-            @PluginAttribute("minLevel") final Level minLevel,
-            @PluginAttribute("maxLevel") final Level maxLevel,
-            @PluginAttribute("onMatch") final Result match,
-            @PluginAttribute("onMismatch") final Result mismatch) {
+            @PluginAttribute final Level minLevel,
+            @PluginAttribute final Level maxLevel,
+            @PluginAttribute final Result match,
+            @PluginAttribute final Result mismatch) {
             // @formatter:on
         final Level actualMinLevel = minLevel == null ? Level.ERROR : minLevel;
         final Level actualMaxLevel = maxLevel == null ? Level.ERROR : maxLevel;

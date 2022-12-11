@@ -20,17 +20,19 @@ import java.util.List;
 
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.layout.PatternLayout;
-import org.apache.logging.log4j.util.Chars;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.Plugin;
 import org.apache.logging.log4j.util.EnglishEnums;
 import org.apache.logging.log4j.util.PerformanceSensitive;
+import org.apache.logging.log4j.util.StringBuilders;
 
 /**
  * Converter that encodes the output from a pattern using a specified format. Supported formats include HTML
  * (default) and JSON.
  */
-@Plugin(name = "encode", category = PatternConverter.CATEGORY)
+@Namespace(PatternConverter.CATEGORY)
+@Plugin("encode")
 @ConverterKeys({"enc", "encode"})
 @PerformanceSensitive("allocation")
 public final class EncodingPatternConverter extends LogEventPatternConverter {
@@ -49,6 +51,13 @@ public final class EncodingPatternConverter extends LogEventPatternConverter {
         super("encode", "encode");
         this.formatters = formatters;
         this.escapeFormat = escapeFormat;
+    }
+
+    @Override
+    public boolean handlesThrowable() {
+        return formatters != null && formatters.stream()
+                .map(PatternFormatter::getConverter)
+                .anyMatch(LogEventPatternConverter::handlesThrowable);
     }
 
     /**
@@ -91,42 +100,55 @@ public final class EncodingPatternConverter extends LogEventPatternConverter {
         HTML {
             @Override
             void escape(final StringBuilder toAppendTo, final int start) {
-                for (int i = toAppendTo.length() - 1; i >= start; i--) { // backwards: length may change
+
+                // do this in two passes to keep O(n) time complexity
+
+                final int origLength = toAppendTo.length();
+                int firstSpecialChar = origLength;
+
+                for (int i = origLength - 1; i >= start; i--) {
                     final char c = toAppendTo.charAt(i);
-                    switch (c) {
-                        case '\r':
-                            toAppendTo.setCharAt(i, '\\');
-                            toAppendTo.insert(i + 1, 'r');
-                            break;
-                        case '\n':
-                            toAppendTo.setCharAt(i, '\\');
-                            toAppendTo.insert(i + 1, 'n');
-                            break;
-                        case '&':
-                            toAppendTo.setCharAt(i, '&');
-                            toAppendTo.insert(i + 1, "amp;");
-                            break;
-                        case '<':
-                            toAppendTo.setCharAt(i, '&');
-                            toAppendTo.insert(i + 1, "lt;");
-                            break;
-                        case '>':
-                            toAppendTo.setCharAt(i, '&');
-                            toAppendTo.insert(i + 1, "gt;");
-                            break;
-                        case '"':
-                            toAppendTo.setCharAt(i, '&');
-                            toAppendTo.insert(i + 1, "quot;");
-                            break;
-                        case '\'':
-                            toAppendTo.setCharAt(i, '&');
-                            toAppendTo.insert(i + 1, "apos;");
-                            break;
-                        case '/':
-                            toAppendTo.setCharAt(i, '&');
-                            toAppendTo.insert(i + 1, "#x2F;");
-                            break;
+                    final String escaped = escapeChar(c);
+                    if (escaped != null) {
+                        firstSpecialChar = i;
+                        for (int j = 0; j < escaped.length() - 1; j++) {
+                            toAppendTo.append(' '); // make room for the escape sequence
+                        }
                     }
+                }
+
+                for (int i = origLength - 1, j = toAppendTo.length(); i >= firstSpecialChar; i--) {
+                    final char c = toAppendTo.charAt(i);
+                    final String escaped = escapeChar(c);
+                    if (escaped == null) {
+                        toAppendTo.setCharAt(--j, c);
+                    } else {
+                        toAppendTo.replace(j - escaped.length(), j, escaped);
+                        j -= escaped.length();
+                    }
+                }
+            }
+
+            private String escapeChar(char c) {
+                switch (c) {
+                    case '\r':
+                        return "\\r";
+                    case '\n':
+                        return "\\n";
+                    case '&':
+                        return "&amp;";
+                    case '<':
+                        return "&lt;";
+                    case '>':
+                        return "&gt;";
+                    case '"':
+                        return "&quot;";
+                    case '\'':
+                        return "&apos;";
+                    case '/':
+                        return "&#x2F;";
+                    default:
+                        return null;
                 }
             }
         },
@@ -139,19 +161,54 @@ public final class EncodingPatternConverter extends LogEventPatternConverter {
         JSON {
             @Override
             void escape(final StringBuilder toAppendTo, final int start) {
-                for (int i = toAppendTo.length() - 1; i >= start; i--) { // backwards: length may change
+                StringBuilders.escapeJson(toAppendTo, start);
+            }
+        },
+
+        CRLF {
+            @Override
+            void escape(final StringBuilder toAppendTo, final int start) {
+
+                // do this in two passes to keep O(n) time complexity
+
+                final int origLength = toAppendTo.length();
+                int firstSpecialChar = origLength;
+
+                for (int i = origLength - 1; i >= start; i--) {
                     final char c = toAppendTo.charAt(i);
-                    if (Character.isISOControl(c)) {
-                        // all iso control characters are in U+00xx
-                        toAppendTo.setCharAt(i, '\\');
-                        toAppendTo.insert(i + 1, "u0000");
-                        toAppendTo.setCharAt(i + 4, Chars.getUpperCaseHex((c & 0xF0) >> 4));
-                        toAppendTo.setCharAt(i + 5, Chars.getUpperCaseHex(c & 0xF));
-                    } else if (c == '"' || c == '\\') {
-                        // only " and \ need to be escaped; other escapes are optional
-                        toAppendTo.insert(i, '\\');
+                    if (c == '\r' || c == '\n') {
+                        firstSpecialChar = i;
+                        toAppendTo.append(' '); // make room for the escape sequence
                     }
                 }
+
+                for (int i = origLength - 1, j = toAppendTo.length(); i >= firstSpecialChar; i--) {
+                    final char c = toAppendTo.charAt(i);
+                    switch (c) {
+                        case '\r':
+                            toAppendTo.setCharAt(--j, 'r');
+                            toAppendTo.setCharAt(--j, '\\');
+                            break;
+                        case '\n':
+                            toAppendTo.setCharAt(--j, 'n');
+                            toAppendTo.setCharAt(--j, '\\');
+                            break;
+                        default:
+                            toAppendTo.setCharAt(--j, c);
+                    }
+                }
+            }
+        },
+
+        /**
+         * XML string escaping as defined in XML specification.
+         *
+         * @see <a href="https://www.w3.org/TR/xml/">XML specification</a>
+         */
+        XML {
+            @Override
+            void escape(final StringBuilder toAppendTo, final int start) {
+                StringBuilders.escapeXml(toAppendTo, start);
             }
         };
 

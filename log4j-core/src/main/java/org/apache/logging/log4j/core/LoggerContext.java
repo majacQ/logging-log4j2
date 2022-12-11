@@ -16,14 +16,15 @@
  */
 package org.apache.logging.log4j.core;
 
-import static org.apache.logging.log4j.core.util.ShutdownCallbackRegistry.SHUTDOWN_HOOK_MARKER;
-
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.net.URI;
 import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -31,6 +32,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.ThreadContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationFactory;
 import org.apache.logging.log4j.core.config.ConfigurationListener;
@@ -38,19 +40,25 @@ import org.apache.logging.log4j.core.config.ConfigurationSource;
 import org.apache.logging.log4j.core.config.DefaultConfiguration;
 import org.apache.logging.log4j.core.config.NullConfiguration;
 import org.apache.logging.log4j.core.config.Reconfigurable;
-import org.apache.logging.log4j.core.impl.Log4jLogEvent;
+import org.apache.logging.log4j.core.impl.Log4jProperties;
 import org.apache.logging.log4j.core.jmx.Server;
 import org.apache.logging.log4j.core.util.Cancellable;
 import org.apache.logging.log4j.core.util.ExecutorServices;
 import org.apache.logging.log4j.core.util.NetUtils;
 import org.apache.logging.log4j.core.util.ShutdownCallbackRegistry;
 import org.apache.logging.log4j.message.MessageFactory;
+import org.apache.logging.log4j.plugins.di.DI;
+import org.apache.logging.log4j.plugins.di.Injector;
+import org.apache.logging.log4j.plugins.di.Key;
 import org.apache.logging.log4j.spi.AbstractLogger;
 import org.apache.logging.log4j.spi.LoggerContextFactory;
+import org.apache.logging.log4j.spi.LoggerContextShutdownAware;
+import org.apache.logging.log4j.spi.LoggerContextShutdownEnabled;
 import org.apache.logging.log4j.spi.LoggerRegistry;
 import org.apache.logging.log4j.spi.Terminable;
-import org.apache.logging.log4j.util.LoaderUtil;
 import org.apache.logging.log4j.util.PropertiesUtil;
+
+import static org.apache.logging.log4j.core.util.ShutdownCallbackRegistry.SHUTDOWN_HOOK_MARKER;
 
 /**
  * The LoggerContext is the anchor for the logging system. It maintains a list of all the loggers requested by
@@ -58,33 +66,29 @@ import org.apache.logging.log4j.util.PropertiesUtil;
  * filters, etc and will be atomically updated whenever a reconfigure occurs.
  */
 public class LoggerContext extends AbstractLifeCycle
-        implements org.apache.logging.log4j.spi.LoggerContext, AutoCloseable, Terminable, ConfigurationListener {
-
-    static {
-        try {
-            // LOG4J2-1642 preload ExecutorServices as it is used in shutdown hook
-            LoaderUtil.loadClass(ExecutorServices.class.getName());
-        } catch (final Exception e) {
-            LOGGER.error("Failed to preload ExecutorServices class.", e);
-        }
-    }
+        implements org.apache.logging.log4j.spi.LoggerContext, AutoCloseable, Terminable, ConfigurationListener,
+        LoggerContextShutdownEnabled {
 
     /**
      * Property name of the property change event fired if the configuration is changed.
      */
     public static final String PROPERTY_CONFIG = "config";
+    public  static final Key<WeakReference<LoggerContext>> KEY = new Key<>() {};
 
     private static final Configuration NULL_CONFIGURATION = new NullConfiguration();
 
     private final LoggerRegistry<Logger> loggerRegistry = new LoggerRegistry<>();
     private final CopyOnWriteArrayList<PropertyChangeListener> propertyChangeListeners = new CopyOnWriteArrayList<>();
+    private volatile List<LoggerContextShutdownAware> listeners;
+    private final Injector injector;
 
     /**
      * The Configuration is volatile to guarantee that initialization of the Configuration has completed before the
      * reference is updated.
      */
     private volatile Configuration configuration = new DefaultConfiguration();
-    private Object externalContext;
+    private static final String EXTERNAL_CONTEXT_KEY = "__EXTERNAL_CONTEXT_KEY__";
+    private final ConcurrentMap<String, Object> externalMap = new ConcurrentHashMap<>();
     private String contextName;
     private volatile URI configLocation;
     private Cancellable shutdownCallback;
@@ -118,9 +122,27 @@ public class LoggerContext extends AbstractLifeCycle
      * @param configLocn The location of the configuration as a URI.
      */
     public LoggerContext(final String name, final Object externalContext, final URI configLocn) {
+        this(name, externalContext, configLocn, DI.createInjector());
+        injector.init();
+        injector.registerBindingIfAbsent(KEY, () -> new WeakReference<>(this));
+    }
+
+    /**
+     * Constructs a LoggerContext with a name, external context, configuration URI, and an Injector.
+     *
+     * @param name context name
+     * @param externalContext external context or null
+     * @param configLocn location of configuration as a URI
+     * @param injector initialized Injector instance
+     */
+    public LoggerContext(final String name, final Object externalContext, final URI configLocn, final Injector injector) {
         this.contextName = name;
-        this.externalContext = externalContext;
+        if (externalContext != null) {
+            externalMap.put(EXTERNAL_CONTEXT_KEY, externalContext);
+        }
         this.configLocation = configLocn;
+        this.injector = injector.copy();
+        injector.registerBindingIfAbsent(KEY, () -> new WeakReference<>(this));
     }
 
     /**
@@ -132,8 +154,25 @@ public class LoggerContext extends AbstractLifeCycle
      * @param configLocn The configuration location.
      */
     public LoggerContext(final String name, final Object externalContext, final String configLocn) {
+        this(name, externalContext, configLocn, DI.createInjector());
+        injector.init();
+        injector.registerBindingIfAbsent(KEY, () -> new WeakReference<>(this));
+    }
+
+    /**
+     * Constructs a LoggerContext with a name, external context, configuration location string, and an Injector.
+     * The location must be resolvable to a File.
+     *
+     * @param name context name
+     * @param externalContext external context or null
+     * @param configLocn configuration location
+     * @param injector initialized Injector instance
+     */
+    public LoggerContext(final String name, final Object externalContext, final String configLocn, final Injector injector) {
         this.contextName = name;
-        this.externalContext = externalContext;
+        if (externalContext != null) {
+            externalMap.put(EXTERNAL_CONTEXT_KEY, externalContext);
+        }
         if (configLocn != null) {
             URI uri;
             try {
@@ -145,6 +184,23 @@ public class LoggerContext extends AbstractLifeCycle
         } else {
             configLocation = null;
         }
+        this.injector = injector.copy();
+        this.injector.registerBindingIfAbsent(KEY, () -> new WeakReference<>(this));
+    }
+
+    public void addShutdownListener(final LoggerContextShutdownAware listener) {
+        if (listeners == null) {
+            synchronized(this) {
+                if (listeners == null) {
+                    listeners = new CopyOnWriteArrayList<>();
+                }
+            }
+        }
+        listeners.add(listener);
+    }
+
+    public List<LoggerContextShutdownAware> getListeners() {
+        return listeners;
     }
 
     /**
@@ -217,8 +273,8 @@ public class LoggerContext extends AbstractLifeCycle
 
     @Override
     public void start() {
-        LOGGER.debug("Starting LoggerContext[name={}, {}]...", getName(), this);
-        if (PropertiesUtil.getProperties().getBooleanProperty("log4j.LoggerContext.stacktrace.on.start", false)) {
+        LOGGER.debug("Starting {}...", this);
+        if (PropertiesUtil.getProperties().getBooleanProperty(Log4jProperties.LOGGER_CONTEXT_STACKTRACE_ON_START, false)) {
             LOGGER.debug("Stack trace to locate invoker",
                     new Exception("Not a real error, showing stack trace to locate invoker"));
         }
@@ -236,7 +292,7 @@ public class LoggerContext extends AbstractLifeCycle
                 configLock.unlock();
             }
         }
-        LOGGER.debug("LoggerContext[name={}, {}] started OK.", getName(), this);
+        LOGGER.debug("{} started OK.", this);
     }
 
     /**
@@ -245,11 +301,11 @@ public class LoggerContext extends AbstractLifeCycle
      * @param config The new Configuration.
      */
     public void start(final Configuration config) {
-        LOGGER.debug("Starting LoggerContext[name={}, {}] with configuration {}...", getName(), this, config);
+        LOGGER.debug("Starting {} with configuration {}...", this, config);
         if (configLock.tryLock()) {
             try {
                 if (this.isInitialized() || this.isStopped()) {
-                    if (this.configuration.isShutdownHookEnabled()) {
+                    if (config.isShutdownHookEnabled()) {
                         setUpShutdownHook();
                     }
                     this.setStarted();
@@ -259,7 +315,7 @@ public class LoggerContext extends AbstractLifeCycle
             }
         }
         setConfiguration(config);
-        LOGGER.debug("LoggerContext[name={}, {}] started OK with configuration {}.", getName(), this, config);
+        LOGGER.debug("{} started OK with configuration {}.", this, config);
     }
 
     private void setUpShutdownHook() {
@@ -267,6 +323,8 @@ public class LoggerContext extends AbstractLifeCycle
             final LoggerContextFactory factory = LogManager.getFactory();
             if (factory instanceof ShutdownCallbackRegistry) {
                 LOGGER.debug(SHUTDOWN_HOOK_MARKER, "Shutdown hook enabled. Registering a new one.");
+                // LOG4J2-1642 preload ExecutorServices as it is used in shutdown hook
+                ExecutorServices.ensureInitialized();
                 try {
                     final long shutdownTimeoutMillis = this.configuration.getShutdownTimeoutMillis();
                     this.shutdownCallback = ((ShutdownCallbackRegistry) factory).addShutdownCallback(new Runnable() {
@@ -274,8 +332,7 @@ public class LoggerContext extends AbstractLifeCycle
                         public void run() {
                             @SuppressWarnings("resource")
                             final LoggerContext context = LoggerContext.this;
-                            LOGGER.debug(SHUTDOWN_HOOK_MARKER, "Stopping LoggerContext[name={}, {}]",
-                                    context.getName(), context);
+                            LOGGER.debug(SHUTDOWN_HOOK_MARKER, "Stopping {}", context);
                             context.stop(shutdownTimeoutMillis, TimeUnit.MILLISECONDS);
                         }
 
@@ -326,7 +383,7 @@ public class LoggerContext extends AbstractLifeCycle
      */
     @Override
     public boolean stop(final long timeout, final TimeUnit timeUnit) {
-        LOGGER.debug("Stopping LoggerContext[name={}, {}]...", getName(), this);
+        LOGGER.debug("Stopping {}...", this);
         configLock.lock();
         try {
             if (this.isStopped()) {
@@ -347,18 +404,23 @@ public class LoggerContext extends AbstractLifeCycle
             final Configuration prev = configuration;
             configuration = NULL_CONFIGURATION;
             updateLoggers();
-            if (prev instanceof LifeCycle2) {
-                ((LifeCycle2) prev).stop(timeout, timeUnit);
-            } else {
-                prev.stop();
-            }
-            externalContext = null;
+            prev.stop(timeout, timeUnit);
+            externalMap.clear();
             LogManager.getFactory().removeContext(this);
         } finally {
             configLock.unlock();
             this.setStopped();
         }
-        LOGGER.debug("Stopped LoggerContext[name={}, {}] with status {}", getName(), this, true);
+        if (listeners != null) {
+            for (final LoggerContextShutdownAware listener : listeners) {
+                try {
+                    listener.contextShutdown(this);
+                } catch (final Exception ex) {
+                    // Ignore the exception.
+                }
+            }
+        }
+        LOGGER.debug("Stopped {} with status {}", this, true);
         return true;
     }
 
@@ -387,7 +449,32 @@ public class LoggerContext extends AbstractLifeCycle
      * @throws NullPointerException if the specified name is {@code null}
      */
     public void setName(final String name) {
-    	contextName = Objects.requireNonNull(name);
+        contextName = Objects.requireNonNull(name);
+    }
+
+    @Override
+    public Object getObject(final String key) {
+        return externalMap.get(key);
+    }
+
+    @Override
+    public Object putObject(final String key, final Object value) {
+        return externalMap.put(key, value);
+    }
+
+    @Override
+    public Object putObjectIfAbsent(final String key, final Object value) {
+        return externalMap.putIfAbsent(key, value);
+    }
+
+    @Override
+    public Object removeObject(final String key) {
+        return externalMap.remove(key);
+    }
+
+    @Override
+    public boolean removeObject(final String key, final Object value) {
+        return externalMap.remove(key, value);
     }
 
     /**
@@ -396,7 +483,11 @@ public class LoggerContext extends AbstractLifeCycle
      * @param context The external context.
      */
     public void setExternalContext(final Object context) {
-        this.externalContext = context;
+        if (context != null) {
+            this.externalMap.put(EXTERNAL_CONTEXT_KEY, context);
+        } else {
+            this.externalMap.remove(EXTERNAL_CONTEXT_KEY);
+        }
     }
 
     /**
@@ -406,7 +497,7 @@ public class LoggerContext extends AbstractLifeCycle
      */
     @Override
     public Object getExternalContext() {
-        return this.externalContext;
+        return this.externalMap.get(EXTERNAL_CONTEXT_KEY);
     }
 
     /**
@@ -456,6 +547,26 @@ public class LoggerContext extends AbstractLifeCycle
     }
 
     /**
+     * Gets the LoggerRegistry.
+     *
+     * @return the LoggerRegistry.
+     * @since 2.17.2
+     */
+    public LoggerRegistry<Logger> getLoggerRegistry() {
+        return loggerRegistry;
+    }
+
+    /**
+     * Gets the Injector.
+     *
+     * @return the Injector
+     * @since 3.0.0
+     */
+    public Injector getInjector() {
+        return injector;
+    }
+
+    /**
      * Determines if the specified Logger exists.
      *
      * @param name The Logger name to search for.
@@ -491,7 +602,8 @@ public class LoggerContext extends AbstractLifeCycle
     /**
      * Returns the current Configuration. The Configuration will be replaced when a reconfigure occurs.
      *
-     * @return The Configuration.
+     * @return The current Configuration, never {@code null}, but may be
+     * {@link org.apache.logging.log4j.core.config.NullConfiguration}.
      */
     public Configuration getConfiguration() {
         return configuration;
@@ -522,7 +634,7 @@ public class LoggerContext extends AbstractLifeCycle
      * @param config The new Configuration.
      * @return The previous Configuration.
      */
-    private Configuration setConfiguration(final Configuration config) {
+    public Configuration setConfiguration(final Configuration config) {
         if (config == null) {
             LOGGER.error("No configuration found for context '{}'.", contextName);
             // No change, return the current configuration.
@@ -536,7 +648,8 @@ public class LoggerContext extends AbstractLifeCycle
             final ConcurrentMap<String, String> map = config.getComponent(Configuration.CONTEXT_PROPERTIES);
 
             try { // LOG4J2-719 network access may throw android.os.NetworkOnMainThreadException
-                map.putIfAbsent("hostName", NetUtils.getLocalHostname());
+                // LOG4J2-2808 don't block unless necessary
+                map.computeIfAbsent("hostName", s -> NetUtils.getLocalHostname());
             } catch (final Exception ex) {
                 LOGGER.debug("Ignoring {}, setting hostName to 'unknown'", ex.toString());
                 map.putIfAbsent("hostName", "unknown");
@@ -558,8 +671,6 @@ public class LoggerContext extends AbstractLifeCycle
                 // LOG4J2-716: Android has no java.lang.management
                 LOGGER.error("Could not reconfigure JMX", e);
             }
-            // AsyncLoggers update their nanoClock when the configuration changes
-            Log4jLogEvent.setNanoClock(configuration.getNanoClock());
 
             return prev;
         } finally {
@@ -607,10 +718,12 @@ public class LoggerContext extends AbstractLifeCycle
      * Reconfigures the context.
      */
     private void reconfigure(final URI configURI) {
-        final ClassLoader cl = ClassLoader.class.isInstance(externalContext) ? (ClassLoader) externalContext : null;
-        LOGGER.debug("Reconfiguration started for context[name={}] at URI {} ({}) with optional ClassLoader: {}",
-                contextName, configURI, this, cl);
-        final Configuration instance = ConfigurationFactory.getInstance().getConfiguration(this, contextName, configURI, cl);
+        final Object externalContext = externalMap.get(EXTERNAL_CONTEXT_KEY);
+        final ClassLoader cl = externalContext instanceof ClassLoader ? (ClassLoader) externalContext : null;
+        LOGGER.debug("Reconfiguration started for {} at URI {} with optional ClassLoader: {}",
+                this, configURI, cl);
+        final Configuration instance =
+                injector.getInstance(ConfigurationFactory.KEY).getConfiguration(this, contextName, configURI, cl);
         if (instance == null) {
             LOGGER.error("Reconfiguration failed: No configuration found for '{}' at '{}' in '{}'", contextName, configURI, cl);
         } else {
@@ -620,8 +733,8 @@ public class LoggerContext extends AbstractLifeCycle
              * old.stop(); }
              */
             final String location = configuration == null ? "?" : String.valueOf(configuration.getConfigurationSource());
-            LOGGER.debug("Reconfiguration complete for context[name={}] at URI {} ({}) with optional ClassLoader: {}",
-                    contextName, location, this, cl);
+            LOGGER.debug("Reconfiguration complete for {} at URI {} with optional ClassLoader: {}",
+                    this, location, cl);
         }
     }
 
@@ -632,6 +745,17 @@ public class LoggerContext extends AbstractLifeCycle
      */
     public void reconfigure() {
         reconfigure(configLocation);
+    }
+
+    public void reconfigure(final Configuration configuration) {
+        setConfiguration(configuration);
+        final ConfigurationSource source = configuration.getConfigurationSource();
+        if (source != null) {
+            final URI uri = source.getURI();
+            if (uri != null) {
+                configLocation = uri;
+            }
+        }
     }
 
     /**
@@ -661,19 +785,31 @@ public class LoggerContext extends AbstractLifeCycle
      */
     @Override
     public synchronized void onChange(final Reconfigurable reconfigurable) {
+        final long startMillis = System.currentTimeMillis();
         LOGGER.debug("Reconfiguration started for context {} ({})", contextName, this);
+        initApiModule();
         final Configuration newConfig = reconfigurable.reconfigure();
         if (newConfig != null) {
             setConfiguration(newConfig);
-            LOGGER.debug("Reconfiguration completed for {} ({})", contextName, this);
+            LOGGER.debug("Reconfiguration completed for {} ({}) in {} milliseconds.", contextName, this,
+                    System.currentTimeMillis() - startMillis);
         } else {
-            LOGGER.debug("Reconfiguration failed for {} ({})", contextName, this);
+            LOGGER.debug("Reconfiguration failed for {} ({}) in {} milliseconds.", contextName, this,
+                    System.currentTimeMillis() - startMillis);
         }
+    }
+
+    @Override
+    public String toString() {
+        return "LoggerContext[" + contextName + "]";
+    }
+
+    private void initApiModule() {
+        ThreadContext.init();
     }
 
     // LOG4J2-151: changed visibility from private to protected
     protected Logger newInstance(final LoggerContext ctx, final String name, final MessageFactory messageFactory) {
         return new Logger(ctx, name, messageFactory);
     }
-
 }

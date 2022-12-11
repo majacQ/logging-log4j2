@@ -16,18 +16,17 @@
  */
 package org.apache.logging.log4j.core.layout;
 
-import java.io.Serializable;
-import java.nio.ByteBuffer;
-import java.util.HashMap;
-import java.util.Map;
-
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
 import org.apache.logging.log4j.status.StatusLogger;
+
+import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Abstract base class for Layouts.
@@ -115,20 +114,6 @@ public abstract class AbstractLayout<T extends Serializable> implements Layout<T
     /**
      * Constructs a layout with an optional header and footer.
      *
-     * @param header
-     *            The header to include when the stream is opened. May be null.
-     * @param footer
-     *            The footer to add when the stream is closed. May be null.
-     * @deprecated Use {@link #AbstractLayout(Configuration, byte[], byte[])}
-     */
-    @Deprecated
-    public AbstractLayout(final byte[] header, final byte[] footer) {
-        this(null, header, footer);
-    }
-
-    /**
-     * Constructs a layout with an optional header and footer.
-     *
      * @param configuration
      *            The configuration
      * @param header
@@ -186,7 +171,8 @@ public abstract class AbstractLayout<T extends Serializable> implements Layout<T
      * Subclasses can override this method to provide a garbage-free implementation. For text-based layouts,
      * {@code AbstractStringLayout} provides various convenience methods to help with this:
      * </p>
-     * <pre>@Plugin(name = "MyLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
+     * <pre>@Category(Node.CATEGORY)
+     * @Plugin(value = "MyLayout", elementType = Layout.ELEMENT_TYPE, printObject = true)
      * public final class MyLayout extends AbstractStringLayout {
      *     @Override
      *     public void encode(LogEvent event, ByteBufferDestination destination) {
@@ -209,30 +195,6 @@ public abstract class AbstractLayout<T extends Serializable> implements Layout<T
     @Override
     public void encode(final LogEvent event, final ByteBufferDestination destination) {
         final byte[] data = toByteArray(event);
-        writeTo(data, 0, data.length, destination);
-    }
-
-    /**
-     * Writes the specified data to the specified destination.
-     *
-     * @param data the data to write
-     * @param offset where to start in the specified data array
-     * @param length the number of bytes to write
-     * @param destination the {@code ByteBufferDestination} to write to
-     */
-    public static void writeTo(final byte[] data, int offset, int length, final ByteBufferDestination destination) {
-        int chunk = 0;
-        synchronized (destination) {
-            ByteBuffer buffer = destination.getByteBuffer();
-            do {
-                if (length > buffer.remaining()) {
-                    buffer = destination.drain(buffer);
-                }
-                chunk = Math.min(length, buffer.remaining());
-                buffer.put(data, offset, chunk);
-                offset += chunk;
-                length -= chunk;
-            } while (length > 0);
-        }
+        destination.writeBytes(data, 0, data.length);
     }
 }

@@ -23,9 +23,9 @@ import java.util.Hashtable;
 import java.util.Map;
 
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.util.Integers;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
 import org.apache.logging.log4j.status.StatusLogger;
 import org.apache.logging.log4j.util.LoaderUtil;
 
@@ -36,7 +36,8 @@ import org.apache.logging.log4j.util.LoaderUtil;
  * will be removed prior to advertisement.
  *
  */
-@Plugin(name = "multicastdns", category = Core.CATEGORY_NAME, elementType = "advertiser", printObject = false)
+@Configurable(elementType = "advertiser")
+@Plugin("MulticastDns")
 public class MulticastDnsAdvertiser implements Advertiser {
     /**
      * Status logger.
@@ -46,7 +47,7 @@ public class MulticastDnsAdvertiser implements Advertiser {
     private static final int MAX_LENGTH = 255;
     private static final int DEFAULT_PORT = 4555;
 
-    private static Object jmDNS = initializeJmDns();
+    private static final Object jmDNS = initializeJmDns();
     private static Class<?> jmDNSClass;
     private static Class<?> serviceInfoClass;
 
@@ -93,7 +94,7 @@ public class MulticastDnsAdvertiser implements Advertiser {
             } catch (final NoSuchMethodException e) {
                 // no-op
             }
-            Object serviceInfo;
+            final Object serviceInfo;
             if (isVersion3) {
                 serviceInfo = buildServiceInfoVersion3(zone, port, name, truncatedProperties);
             } else {
@@ -116,7 +117,7 @@ public class MulticastDnsAdvertiser implements Advertiser {
 
     /**
      * Unadvertise the previously advertised entity.
-     * 
+     *
      * @param serviceInfo
      */
     @Override
@@ -189,7 +190,7 @@ public class MulticastDnsAdvertiser implements Advertiser {
         try {
             jmDNSClass = LoaderUtil.loadClass("javax.jmdns.JmDNS");
             serviceInfoClass = LoaderUtil.loadClass("javax.jmdns.ServiceInfo");
-            // if version 3 is available, use it to constuct a serviceInfo instance, otherwise support the version1 API
+            // if version 3 is available, use it to construct a serviceInfo instance, otherwise support the version1 API
             boolean isVersion3 = false;
             try {
                 // create method is in version 3, not version 1

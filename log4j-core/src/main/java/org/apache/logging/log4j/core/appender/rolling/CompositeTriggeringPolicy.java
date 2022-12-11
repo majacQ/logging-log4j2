@@ -16,21 +16,21 @@
  */
 package org.apache.logging.log4j.core.appender.rolling;
 
+import org.apache.logging.log4j.core.LifeCycle;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
-
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.LifeCycle;
-import org.apache.logging.log4j.core.LifeCycle2;
-import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 
 /**
  * Triggering policy that wraps other triggering policies.
  */
-@Plugin(name = "Policies", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin("Policies")
 public final class CompositeTriggeringPolicy extends AbstractTriggeringPolicy {
 
     private final TriggeringPolicy[] triggeringPolicies;
@@ -50,6 +50,7 @@ public final class CompositeTriggeringPolicy extends AbstractTriggeringPolicy {
     @Override
     public void initialize(final RollingFileManager manager) {
         for (final TriggeringPolicy triggeringPolicy : triggeringPolicies) {
+        	LOGGER.debug("Initializing triggering policy {}", triggeringPolicy.toString());
             triggeringPolicy.initialize(manager);
         }
     }
@@ -85,12 +86,7 @@ public final class CompositeTriggeringPolicy extends AbstractTriggeringPolicy {
         setStopping();
         boolean stopped = true;
         for (final TriggeringPolicy triggeringPolicy : triggeringPolicies) {
-            if (triggeringPolicy instanceof LifeCycle2) {
-                stopped &= ((LifeCycle2) triggeringPolicy).stop(timeout, timeUnit);
-            } else if (triggeringPolicy instanceof LifeCycle) {
-                ((LifeCycle) triggeringPolicy).stop();
-                stopped &= true;
-            }
+            stopped &= ((LifeCycle) triggeringPolicy).stop(timeout, timeUnit);
         }
         setStopped();
         return stopped;

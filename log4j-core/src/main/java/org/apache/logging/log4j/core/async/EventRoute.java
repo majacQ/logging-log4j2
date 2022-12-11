@@ -43,7 +43,7 @@ public enum EventRoute {
 
         @Override
         public void logMessage(final AsyncLoggerConfig asyncLoggerConfig, final LogEvent event) {
-            asyncLoggerConfig.callAppendersInBackgroundThread(event);
+            asyncLoggerConfig.logInBackgroundThread(event);
         }
 
         @Override
@@ -53,6 +53,8 @@ public enum EventRoute {
     },
     /**
      * Logs the event synchronously: sends the event directly to the appender (in the current thread).
+     * WARNING: This may result in lines logged out of order as synchronous events may be persisted before
+     * earlier events, even from the same thread, which wait in the queue.
      */
     SYNCHRONOUS {
         @Override
@@ -62,7 +64,7 @@ public enum EventRoute {
 
         @Override
         public void logMessage(final AsyncLoggerConfig asyncLoggerConfig, final LogEvent event) {
-            asyncLoggerConfig.callAppendersInCurrentThread(event);
+            asyncLoggerConfig.logToAsyncLoggerConfigsOnCurrentThread(event);
         }
 
         @Override

@@ -26,10 +26,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
-import org.apache.logging.log4j.util.ReadOnlyStringMap;
-import org.apache.logging.log4j.util.StringMap;
 import org.apache.logging.log4j.spi.ThreadContextMap;
 import org.apache.logging.log4j.util.BiConsumer;
+import org.apache.logging.log4j.util.ReadOnlyStringMap;
+import org.apache.logging.log4j.util.StringMap;
 import org.apache.logging.log4j.util.TriConsumer;
 
 /**
@@ -189,12 +189,7 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
         }
     }
     private static final TriConsumer<String, Object, StringMap> PUT_ALL =
-            new TriConsumer<String, Object, StringMap>() {
-        @Override
-        public void accept(final String key, final Object value, final StringMap contextData) {
-            contextData.putValue(key, value);
-        }
-    };
+            (key, value, contextData) -> contextData.putValue(key, value);
 
     private void assertNotFrozen() {
         if (immutable) {
@@ -247,12 +242,7 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
     }
 
     private static final TriConsumer<String, Object, Map<String, String>> COPY_INTO_MAP =
-            new TriConsumer<String, Object, Map<String, String>>() {
-        @Override
-        public void accept(final String k, final Object v, final Map<String, String> map) {
-            map.put(k, v == null ? null : v.toString());
-        }
-    };
+            (k, v, map) -> map.put(k, v == null ? null : v.toString());
 
     /*
      * Removes all elements from this map.
@@ -306,7 +296,7 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
     }
 
     @Override
-	public boolean equals(final Object obj) {
+    public boolean equals(final Object obj) {
         if (obj == this) {
             return true;
         }
@@ -495,7 +485,8 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
     }
 
     /** {@inheritDoc} */
-    public void putAll(final Map<? extends K, ? extends V> map) {
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public void putAll(final Map map) {
         if (loadFactor <= .5) {
             // The resulting map will be sized for m.size() elements
             ensureCapacity(map.size());
@@ -503,9 +494,7 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
             // The resulting map will be tentatively sized for size() +  m.size() elements
             tryCapacity(size() + map.size());
         }
-        for (final Map.Entry<? extends K, ? extends V> entry : map.entrySet()) {
-            putObjectValue(entry.getKey(), entry.getValue());
-        }
+        map.forEach((key, value) -> putObjectValue((K) key, (V) value));
     }
 
     private V putObjectValue(final K k, final V v) {
@@ -652,8 +641,8 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
     public boolean trim(final int n) {
         final int l = HashCommon.nextPowerOfTwo((int) Math.ceil(n / loadFactor));
         if (l >= n || size > HashCommon.maxFill(l, loadFactor)) {
-			return true;
-		}
+            return true;
+        }
         try {
             rehash(l);
         } catch (final OutOfMemoryError cantDoIt) { // unusual to catch OOME but in this case appropriate
@@ -708,7 +697,7 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
      * @return a hash code for this map.
      */
     @Override
-	public int hashCode() {
+    public int hashCode() {
         int result = 0;
         for (int j = realSize(), i = 0, t = 0; j-- != 0;) {
             while (keys[i] == null) {
@@ -770,15 +759,12 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
     }
 
     private static final TriConsumer<String, Object, ObjectOutputStream> SERIALIZER =
-            new TriConsumer<String, Object, ObjectOutputStream>() {
-                @Override
-                public void accept(final String k, final Object v, final ObjectOutputStream objectOutputStream) {
-                    try {
-                        objectOutputStream.writeObject(k);
-                        objectOutputStream.writeObject(v);
-                    } catch (final IOException ioex) {
-                        throw new IllegalStateException(ioex);
-                    }
+            (k, v, objectOutputStream) -> {
+                try {
+                    objectOutputStream.writeObject(k);
+                    objectOutputStream.writeObject(v);
+                } catch (final IOException ioex) {
+                    throw new IllegalStateException(ioex);
                 }
             };
 
@@ -912,8 +898,8 @@ public class OpenHashStringMap<K, V> implements StringMap, ThreadContextMap {
          * @return the maximum number of entries before rehashing.
          */
         public static int maxFill(final int n, final float f) {
-		/* We must guarantee that there is always at least
-		 * one free entry (even with pathological load factors). */
+        /* We must guarantee that there is always at least
+         * one free entry (even with pathological load factors). */
             return Math.min((int) Math.ceil(n * f), n - 1);
         }
 

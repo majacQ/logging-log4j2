@@ -16,33 +16,34 @@
  */
 package org.apache.logging.log4j.core.appender;
 
+import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Inject;
+import org.apache.logging.log4j.plugins.Node;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.PluginNode;
+import org.apache.logging.log4j.plugins.validation.constraints.Required;
+import org.apache.logging.log4j.status.StatusLogger;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.logging.log4j.core.Appender;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
-import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginNode;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.Required;
-import org.apache.logging.log4j.status.StatusLogger;
-
 /**
  * A deferred plugin for appenders.
  */
-@Plugin(name = "AppenderSet", category = Core.CATEGORY_NAME, printObject = true, deferChildren = true)
+@Configurable(printObject = true, deferChildren = true)
+@Plugin
 public class AppenderSet {
 
-    public static class Builder implements org.apache.logging.log4j.core.util.Builder<AppenderSet> {
+    public static class Builder implements org.apache.logging.log4j.plugins.util.Builder<AppenderSet> {
 
         @PluginNode
         private Node node;
 
-        @PluginConfiguration
+        @Inject
         @Required
         private Configuration configuration;
 
@@ -50,7 +51,7 @@ public class AppenderSet {
         public AppenderSet build() {
             if (configuration == null) {
                 LOGGER.error("Configuration is missing from AppenderSet {}", this);
-                return null;                
+                return null;
             }
             if (node == null) {
                 LOGGER.error("No node in AppenderSet {}", this);
@@ -65,7 +66,7 @@ public class AppenderSet {
             for (final Node childNode : children) {
                 final String key = childNode.getAttributes().get("name");
                 if (key == null) {
-                    LOGGER.error("The attribute 'name' is missing from from the node {} in AppenderSet {}",
+                    LOGGER.error("The attribute 'name' is missing from the node {} in AppenderSet {}",
                             childNode, children);
                 } else {
                     map.put(key, childNode);
@@ -82,12 +83,12 @@ public class AppenderSet {
             return configuration;
         }
 
-        public Builder withNode(@SuppressWarnings("hiding") final Node node) {
+        public Builder setNode(@SuppressWarnings("hiding") final Node node) {
             this.node = node;
             return this;
         }
 
-        public Builder withConfiguration(@SuppressWarnings("hiding") final Configuration configuration) {
+        public Builder setConfiguration(@SuppressWarnings("hiding") final Configuration configuration) {
             this.configuration = configuration;
             return this;
         }
@@ -104,7 +105,7 @@ public class AppenderSet {
     private final Configuration configuration;
     private final Map<String, Node> nodeMap;
 
-    @PluginBuilderFactory
+    @PluginFactory
     public static Builder newBuilder() {
         return new Builder();
     }
@@ -114,14 +115,14 @@ public class AppenderSet {
         this.nodeMap = appenders;
     }
 
-    public Appender createAppender(final String appenderName, final String actualName) {
-        final Node node = nodeMap.get(appenderName);
+    public Appender createAppender(final String actualAppenderName, final String sourceAppenderName) {
+        final Node node = nodeMap.get(actualAppenderName);
         if (node == null) {
-            LOGGER.error("No node named {} in {}", appenderName, this);
+            LOGGER.error("No node named {} in {}", actualAppenderName, this);
             return null;
         }
-        node.getAttributes().put("name", actualName);
-        if (node.getType().getElementName().equals(Appender.ELEMENT_TYPE)) {
+        node.getAttributes().put("name", sourceAppenderName);
+        if (node.getType().getElementType().equals(Appender.ELEMENT_TYPE)) {
             final Node appNode = new Node(node);
             configuration.createConfiguration(appNode, null);
             if (appNode.getObject() instanceof Appender) {
@@ -132,7 +133,7 @@ public class AppenderSet {
             LOGGER.error("Unable to create Appender of type " + node.getName());
             return null;
         }
-        LOGGER.error("No Appender was configured for name {} " + appenderName);
+        LOGGER.error("No Appender was configured for name {} " + actualAppenderName);
         return null;
     }
 }

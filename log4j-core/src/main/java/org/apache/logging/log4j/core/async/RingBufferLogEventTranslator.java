@@ -16,15 +16,15 @@
  */
 package org.apache.logging.log4j.core.async;
 
+import com.lmax.disruptor.EventTranslator;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.ThreadContext.ContextStack;
 import org.apache.logging.log4j.core.ContextDataInjector;
-import org.apache.logging.log4j.core.impl.ContextDataInjectorFactory;
-import org.apache.logging.log4j.util.StringMap;
+import org.apache.logging.log4j.core.time.Clock;
+import org.apache.logging.log4j.core.time.NanoClock;
 import org.apache.logging.log4j.message.Message;
-
-import com.lmax.disruptor.EventTranslator;
+import org.apache.logging.log4j.util.StringMap;
 
 /**
  * This class is responsible for writing elements that make up a log event into
@@ -35,9 +35,9 @@ import com.lmax.disruptor.EventTranslator;
 public class RingBufferLogEventTranslator implements
         EventTranslator<RingBufferLogEvent> {
 
-    private final ContextDataInjector injector = ContextDataInjectorFactory.createInjector();
+    private ContextDataInjector contextDataInjector;
     private AsyncLogger asyncLogger;
-    private String loggerName;
+    String loggerName;
     protected Marker marker;
     protected String fqcn;
     protected Level level;
@@ -48,26 +48,27 @@ public class RingBufferLogEventTranslator implements
     private String threadName = Thread.currentThread().getName();
     private int threadPriority = Thread.currentThread().getPriority();
     private StackTraceElement location;
-    private long currentTimeMillis;
-    private long nanoTime;
+    private Clock clock;
+    private NanoClock nanoClock;
 
     // @Override
     @Override
     public void translateTo(final RingBufferLogEvent event, final long sequence) {
-
-        event.setValues(asyncLogger, loggerName, marker, fqcn, level, message, thrown,
-                // config properties are taken care of in the EventHandler thread
-                // in the AsyncLogger#actualAsyncLog method
-                injector.injectContextData(null, (StringMap) event.getContextData()), contextStack,
-                threadId, threadName, threadPriority, location, currentTimeMillis, nanoTime);
-
-        clear(); // clear the translator
+        try {
+            event.setValues(asyncLogger, loggerName, marker, fqcn, level, message, thrown,
+                    // config properties are taken care of in the EventHandler thread
+                    // in the AsyncLogger#actualAsyncLog method
+                    contextDataInjector.injectContextData(null, (StringMap) event.getContextData()), contextStack,
+                    threadId, threadName, threadPriority, location, clock, nanoClock);
+        } finally {
+            clear(); // clear the translator
+        }
     }
 
     /**
      * Release references held by this object to allow objects to be garbage-collected.
      */
-    private void clear() {
+    void clear() {
         setBasicValues(null, // asyncLogger
                 null, // loggerName
                 null, // marker
@@ -77,15 +78,16 @@ public class RingBufferLogEventTranslator implements
                 null, // t
                 null, // contextStack
                 null, // location
-                0, // currentTimeMillis
-                0 // nanoTime
+                null, // clock
+                null, // nanoClock
+                null  // contextDataInjector
         );
     }
 
     public void setBasicValues(final AsyncLogger anAsyncLogger, final String aLoggerName, final Marker aMarker,
-            final String theFqcn, final Level aLevel, final Message msg, final Throwable aThrowable,
-            final ContextStack aContextStack, final StackTraceElement aLocation,
-            final long aCurrentTimeMillis, final long aNanoTime) {
+                               final String theFqcn, final Level aLevel, final Message msg, final Throwable aThrowable,
+                               final ContextStack aContextStack, final StackTraceElement aLocation,
+                               final Clock aClock, final NanoClock aNanoClock, final ContextDataInjector aContextDataInjector) {
         this.asyncLogger = anAsyncLogger;
         this.loggerName = aLoggerName;
         this.marker = aMarker;
@@ -95,8 +97,9 @@ public class RingBufferLogEventTranslator implements
         this.thrown = aThrowable;
         this.contextStack = aContextStack;
         this.location = aLocation;
-        this.currentTimeMillis = aCurrentTimeMillis;
-        this.nanoTime = aNanoTime;
+        this.clock = aClock;
+        this.nanoClock = aNanoClock;
+        this.contextDataInjector = aContextDataInjector;
     }
 
     public void updateThreadValues() {

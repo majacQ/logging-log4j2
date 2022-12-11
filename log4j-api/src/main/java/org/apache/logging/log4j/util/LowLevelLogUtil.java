@@ -14,13 +14,11 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.util;
 
-import java.io.OutputStream;
 import java.io.PrintWriter;
-import java.io.Writer;
-import java.util.Objects;
+
+import org.apache.logging.log4j.Logger;
 
 /**
  * PrintWriter-based logging utility for classes too low level to use {@link org.apache.logging.log4j.status.StatusLogger}.
@@ -29,37 +27,89 @@ import java.util.Objects;
  *
  * @since 2.6
  */
-final class LowLevelLogUtil {
+@InternalApi
+public final class LowLevelLogUtil {
 
-    private static PrintWriter writer = new PrintWriter(System.err, true);
+    interface ErrorLogger {
+        void error(final String message);
+
+        void error(final Throwable throwable);
+
+        void error(final String message, final Throwable throwable);
+    }
+
+    private static class StandardErrorLogger implements ErrorLogger {
+        private final PrintWriter stderr = new PrintWriter(System.err, true);
+
+        @Override
+        public void error(final String message) {
+            stderr.println("ERROR: " + message);
+        }
+
+        @Override
+        public void error(final Throwable throwable) {
+            throwable.printStackTrace(stderr);
+        }
+
+        @Override
+        public void error(final String message, final Throwable throwable) {
+            error(message);
+            error(throwable);
+        }
+    }
+
+    private static class DelegateErrorLogger implements ErrorLogger {
+        private final Logger logger;
+
+        private DelegateErrorLogger(final Logger logger) {
+            this.logger = logger;
+        }
+
+        @Override
+        public void error(final String message) {
+            logger.error(message);
+        }
+
+        @Override
+        public void error(final Throwable throwable) {
+            logger.error(throwable);
+        }
+
+        @Override
+        public void error(final String message, final Throwable throwable) {
+            logger.error(message, throwable);
+        }
+    }
+
+    private static ErrorLogger errorLogger = new StandardErrorLogger();
+
+    /**
+     * Sets the low level logging strategy to use a delegate Logger.
+     */
+    public static void setLogger(final Logger logger) {
+        errorLogger = new DelegateErrorLogger(logger);
+    }
+
+    /**
+     * Logs the given message.
+     *
+     * @param message the message to log
+     * @since 2.9.2
+     */
+    public static void log(final String message) {
+        if (message != null) {
+            errorLogger.error(message);
+        }
+    }
 
     public static void logException(final Throwable exception) {
-        exception.printStackTrace(writer);
+        if (exception != null) {
+            errorLogger.error(exception);
+        }
     }
 
     public static void logException(final String message, final Throwable exception) {
-        if (message != null) {
-            writer.println(message);
-        }
-        logException(exception);
-    }
-
-    /**
-     * Sets the underlying OutputStream where exceptions are printed to.
-     *
-     * @param out the OutputStream to log to
-     */
-    public static void setOutputStream(final OutputStream out) {
-        LowLevelLogUtil.writer = new PrintWriter(Objects.requireNonNull(out), true);
-    }
-
-    /**
-     * Sets the underlying Writer where exceptions are printed to.
-     *
-     * @param writer the Writer to log to
-     */
-    public static void setWriter(final Writer writer) {
-        LowLevelLogUtil.writer = new PrintWriter(Objects.requireNonNull(writer), true);
+        errorLogger.error(message, exception);
     }
 
     private LowLevelLogUtil() {

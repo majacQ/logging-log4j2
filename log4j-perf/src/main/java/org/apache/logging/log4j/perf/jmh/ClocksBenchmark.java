@@ -20,10 +20,10 @@ package org.apache.logging.log4j.perf.jmh;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 
-import org.apache.logging.log4j.core.util.CachedClock;
-import org.apache.logging.log4j.core.util.Clock;
-import org.apache.logging.log4j.core.util.CoarseCachedClock;
-import org.apache.logging.log4j.core.util.SystemClock;
+import org.apache.logging.log4j.core.time.internal.CachedClock;
+import org.apache.logging.log4j.core.time.Clock;
+import org.apache.logging.log4j.core.time.internal.CoarseCachedClock;
+import org.apache.logging.log4j.core.time.internal.SystemClock;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Level;
@@ -152,19 +152,16 @@ public class ClocksBenchmark {
         private static volatile OldCachedClock instance;
         private static final Object INSTANCE_LOCK = new Object();
         private volatile long millis = System.currentTimeMillis();
-        private volatile short count = 0;
+        private volatile short count;
 
         private OldCachedClock() {
-            final Thread updater = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    while (true) {
-                        final long time = System.currentTimeMillis();
-                        millis = time;
+            final Thread updater = new Thread(() -> {
+                while (true) {
+                    final long time = System.currentTimeMillis();
+                    millis = time;
 
-                        // avoid explicit dependency on sun.misc.Util
-                        LockSupport.parkNanos(1000 * 1000);
-                    }
+                    // avoid explicit dependency on sun.misc.Util
+                    LockSupport.parkNanos(1000 * 1000);
                 }
             }, "Clock Updater Thread");
             updater.setDaemon(true);

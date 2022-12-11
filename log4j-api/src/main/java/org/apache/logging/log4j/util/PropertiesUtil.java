@@ -16,28 +16,41 @@
  */
 package org.apache.logging.log4j.util;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URL;
-import java.nio.charset.Charset;
+import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
+import java.util.ResourceBundle;
+import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 
 /**
  * <em>Consider this class private.</em>
  * <p>
- * Helps access properties. This utility provides a method to override system properties by specifying properties in a
- * properties file.
+ * Provides utility methods for managing {@link Properties} instances as well as access to the global configuration
+ * system. Properties by default are loaded from the system properties, system environment, and a classpath resource
+ * file named {@value #LOG4J_PROPERTIES_FILE_NAME}. Additional properties can be loaded by implementing a custom
+ * {@link PropertySource} service and specifying it via a {@link ServiceLoader} file called
+ * {@code META-INF/services/org.apache.logging.log4j.util.PropertySource} with a list of fully qualified class names
+ * implementing that interface.
  * </p>
+ *
+ * @see PropertySource
  */
-public final class PropertiesUtil {
+@InternalApi
+public class PropertiesUtil implements PropertyEnvironment {
 
-    private static final PropertiesUtil LOG4J_PROPERTIES = new PropertiesUtil("log4j2.component.properties");
+    private static final String LOG4J_PROPERTIES_FILE_NAME = "log4j2.component.properties";
+    private static final String LOG4J_SYSTEM_PROPERTIES_FILE_NAME = "log4j2.system.properties";
+    private static final Lazy<PropertiesUtil> COMPONENT_PROPERTIES =
+            Lazy.lazy(() -> new PropertiesUtil(LOG4J_PROPERTIES_FILE_NAME));
 
-    private final Properties props;
+    private final Environment environment;
 
     /**
      * Constructs a PropertiesUtil using a given Properties object as its source of defined properties.
@@ -45,7 +58,7 @@ public final class PropertiesUtil {
      * @param props the Properties to use by default
      */
     public PropertiesUtil(final Properties props) {
-        this.props = props;
+        this(new PropertiesPropertySource(props));
     }
 
     /**
@@ -55,40 +68,19 @@ public final class PropertiesUtil {
      * @param propertiesFileName the location of properties file to load
      */
     public PropertiesUtil(final String propertiesFileName) {
-        final Properties properties = new Properties();
-        for (final URL url : LoaderUtil.findResources(propertiesFileName)) {
-            try (final InputStream in = url.openStream()) {
-                properties.load(in);
-            } catch (final IOException ioe) {
-                LowLevelLogUtil.logException("Unable to read " + url.toString(), ioe);
-            }
-        }
-        this.props = properties;
+        this(propertiesFileName, true);
+    }
+
+    private PropertiesUtil(final String propertiesFileName, final boolean useTccl) {
+        this.environment = new Environment(new PropertyFilePropertySource(propertiesFileName, useTccl));
     }
 
     /**
-     * Loads and closes the given property input stream. If an error occurs, log to the status logger.
-     *
-     * @param in a property input stream.
-     * @param source a source object describing the source, like a resource string or a URL.
-     * @return a new Properties object
+     * Constructs a PropertiesUtil for a give property source as source of additional properties.
+     * @param source a property source
      */
-    static Properties loadClose(final InputStream in, final Object source) {
-        final Properties props = new Properties();
-        if (null != in) {
-            try {
-                props.load(in);
-            } catch (final IOException e) {
-                LowLevelLogUtil.logException("Unable to read " + source, e);
-            } finally {
-                try {
-                    in.close();
-                } catch (final IOException e) {
-                    LowLevelLogUtil.logException("Unable to close " + source, e);
-                }
-            }
-        }
-        return props;
+    PropertiesUtil(final PropertySource source) {
+        this.environment = new Environment(source);
     }
 
     /**
@@ -97,59 +89,39 @@ public final class PropertiesUtil {
      * @return the main Log4j PropertiesUtil instance.
      */
     public static PropertiesUtil getProperties() {
-        return LOG4J_PROPERTIES;
+        return COMPONENT_PROPERTIES.value();
+    }
+
+    public static PropertyEnvironment getProperties(final String namespace) {
+        return new Environment(new PropertyFilePropertySource(String.format("log4j2.%s.properties", namespace)));
+    }
+
+    public static ResourceBundle getCharsetsResourceBundle() {
+        return ResourceBundle.getBundle("Log4j-charsets");
+    }
+
+    @Override
+    public void addPropertySource(PropertySource propertySource) {
+        if (environment != null) {
+            environment.addPropertySource(propertySource);
+        }
     }
 
     /**
-     * Gets the named property as a boolean value. If the property matches the string {@code "true"} (case-insensitive),
-     * then it is returned as the boolean value {@code true}. Any other non-{@code null} text in the property is
-     * considered {@code false}.
+     * Returns {@code true} if the specified property is defined, regardless of its value (it may not have a value).
      *
-     * @param name the name of the property to look up
-     * @return the boolean value of the property or {@code false} if undefined.
+     * @param name the name of the property to verify
+     * @return {@code true} if the specified property is defined, regardless of its value
      */
-    public boolean getBooleanProperty(final String name) {
-        return getBooleanProperty(name, false);
-    }
-
-    /**
-     * Gets the named property as a boolean value.
-     *
-     * @param name the name of the property to look up
-     * @param defaultValue the default value to use if the property is undefined
-     * @return the boolean value of the property or {@code defaultValue} if undefined.
-     */
-    public boolean getBooleanProperty(final String name, final boolean defaultValue) {
-        final String prop = getStringProperty(name);
-        return (prop == null) ? defaultValue : "true".equalsIgnoreCase(prop);
-    }
-
-    /**
-     * Gets the named property as a Charset value.
-     *
-     * @param name the name of the property to look up
-     * @return the Charset value of the property or {@link Charset#defaultCharset()} if undefined.
-     */
-    public Charset getCharsetProperty(final String name) {
-        return getCharsetProperty(name, Charset.defaultCharset());
-    }
-
-    /**
-     * Gets the named property as a Charset value.
-     *
-     * @param name the name of the property to look up
-     * @param defaultValue the default value to use if the property is undefined
-     * @return the Charset value of the property or {@code defaultValue} if undefined.
-     */
-    public Charset getCharsetProperty(final String name, final Charset defaultValue) {
-        final String prop = getStringProperty(name);
-        return prop == null ? defaultValue : Charset.forName(prop);
+    @Override
+    public boolean hasProperty(final String name) {
+        return environment.hasProperty(name);
     }
 
     /**
      * Gets the named property as a double.
      *
-     * @param name the name of the property to look up
+     * @param name         the name of the property to look up
      * @param defaultValue the default value to use if the property is undefined
      * @return the parsed double value of the property or {@code defaultValue} if it was undefined or could not be parsed.
      */
@@ -166,70 +138,14 @@ public final class PropertiesUtil {
     }
 
     /**
-     * Gets the named property as an integer.
-     *
-     * @param name the name of the property to look up
-     * @param defaultValue the default value to use if the property is undefined
-     * @return the parsed integer value of the property or {@code defaultValue} if it was undefined or could not be
-     *         parsed.
-     */
-    public int getIntegerProperty(final String name, final int defaultValue) {
-        final String prop = getStringProperty(name);
-        if (prop != null) {
-            try {
-                return Integer.parseInt(prop);
-            } catch (final Exception ignored) {
-                return defaultValue;
-            }
-        }
-        return defaultValue;
-    }
-
-    /**
-     * Gets the named property as a long.
-     *
-     * @param name the name of the property to look up
-     * @param defaultValue the default value to use if the property is undefined
-     * @return the parsed long value of the property or {@code defaultValue} if it was undefined or could not be parsed.
-     */
-    public long getLongProperty(final String name, final long defaultValue) {
-        final String prop = getStringProperty(name);
-        if (prop != null) {
-            try {
-                return Long.parseLong(prop);
-            } catch (final Exception ignored) {
-                return defaultValue;
-            }
-        }
-        return defaultValue;
-    }
-
-    /**
      * Gets the named property as a String.
      *
      * @param name the name of the property to look up
      * @return the String value of the property or {@code null} if undefined.
      */
+    @Override
     public String getStringProperty(final String name) {
-        String prop = null;
-        try {
-            prop = System.getProperty(name);
-        } catch (final SecurityException ignored) {
-            // Ignore
-        }
-        return prop == null ? props.getProperty(name) : prop;
-    }
-
-    /**
-     * Gets the named property as a String.
-     *
-     * @param name the name of the property to look up
-     * @param defaultValue the default value to use if the property is undefined
-     * @return the String value of the property or {@code defaultValue} if undefined.
-     */
-    public String getStringProperty(final String name, final String defaultValue) {
-        final String prop = getStringProperty(name);
-        return (prop == null) ? defaultValue : prop;
+        return environment.getStringProperty(name);
     }
 
     /**
@@ -248,11 +164,140 @@ public final class PropertiesUtil {
     }
 
     /**
+     * Reloads all properties. This is primarily useful for unit tests.
+     *
+     * @since 2.10.0
+     */
+    public void reload() {
+        environment.reload();
+    }
+
+    /**
+     * Provides support for looking up global configuration properties via environment variables, property files,
+     * and system properties, in three variations:
+     * <p>
+     * Normalized: all log4j-related prefixes removed, remaining property is camelCased with a log4j2 prefix for
+     * property files and system properties, or follows a LOG4J_FOO_BAR format for environment variables.
+     * <p>
+     * Legacy: the original property name as defined in the source pre-2.10.0.
+     * <p>
+     * Tokenized: loose matching based on word boundaries.
+     *
+     * @since 2.10.0
+     */
+    private static class Environment implements PropertyEnvironment {
+
+        private final Set<PropertySource> sources = new ConcurrentSkipListSet<>(new PropertySource.Comparator());
+        /**
+         * Maps a key to its value in the lowest priority source that contains it.
+         */
+        private final Map<String, String> literal = new ConcurrentHashMap<>();
+        /**
+         * Maps a key to the value associated to its normalization in the lowest
+         * priority source that contains it.
+         */
+        private final Map<String, String> normalized = new ConcurrentHashMap<>();
+        private final Map<List<CharSequence>, String> tokenized = new ConcurrentHashMap<>();
+
+        private Environment(final PropertySource propertySource) {
+            final PropertyFilePropertySource sysProps = new PropertyFilePropertySource(LOG4J_SYSTEM_PROPERTIES_FILE_NAME);
+            try {
+                sysProps.forEach((key, value) -> {
+                    if (System.getProperty(key) == null) {
+                        System.setProperty(key, value);
+                    }
+                });
+            } catch (final SecurityException ex) {
+                // Access to System Properties is restricted so just skip it.
+            }
+            sources.add(propertySource);
+            final ServiceRegistry registry = ServiceRegistry.getInstance();
+            // Does not log errors using StatusLogger, which depends on PropertiesUtil being initialized.
+            sources.addAll(registry.getServices(PropertySource.class, MethodHandles.lookup(), null, /*verbose=*/false));
+            reload();
+        }
+
+        @Override
+        public void addPropertySource(final PropertySource propertySource) {
+            sources.add(propertySource);
+        }
+
+        private synchronized void reload() {
+            literal.clear();
+            normalized.clear();
+            tokenized.clear();
+            // 1. Collects all property keys from enumerable sources.
+            final Set<String> keys = new HashSet<>();
+            sources.stream()
+                   .map(PropertySource::getPropertyNames)
+                   .forEach(keys::addAll);
+            // 2. Fills the property caches. Sources with higher priority values don't override the previous ones.
+            keys.stream()
+                .filter(Objects::nonNull)
+                .forEach(key -> {
+                    final List<CharSequence> tokens = PropertySource.Util.tokenize(key);
+                    final boolean hasTokens = !tokens.isEmpty();
+                    sources.forEach(source -> {
+                        if (source.containsProperty(key)) {
+                            final String value = source.getProperty(key);
+                            literal.putIfAbsent(key, value);
+                            if (hasTokens) {
+                                tokenized.putIfAbsent(tokens, value);
+                            }
+                        }
+                        if (hasTokens) {
+                            final String normalKey = Objects.toString(source.getNormalForm(tokens), null);
+                            if (normalKey != null && source.containsProperty(normalKey)) {
+                                normalized.putIfAbsent(key, source.getProperty(normalKey));
+                            }
+                        }
+                    });
+                });
+        }
+
+        @Override
+        public String getStringProperty(final String key) {
+            if (normalized.containsKey(key)) {
+                return normalized.get(key);
+            }
+            if (literal.containsKey(key)) {
+                return literal.get(key);
+            }
+            final List<CharSequence> tokens = PropertySource.Util.tokenize(key);
+            final boolean hasTokens = !tokens.isEmpty();
+            for (final PropertySource source : sources) {
+                if (hasTokens) {
+                    final String normalKey = Objects.toString(source.getNormalForm(tokens), null);
+                    if (normalKey != null && source.containsProperty(normalKey)) {
+                        return source.getProperty(normalKey);
+                    }
+                }
+                if (source.containsProperty(key)) {
+                    return source.getProperty(key);
+                }
+            }
+            return tokenized.get(tokens);
+        }
+
+        @Override
+        public boolean hasProperty(final String key) {
+            List<CharSequence> tokens = PropertySource.Util.tokenize(key);
+            return normalized.containsKey(key) ||
+                   literal.containsKey(key) ||
+                   tokenized.containsKey(tokens) ||
+                   sources.stream().anyMatch(s -> {
+                        final CharSequence normalizedKey = s.getNormalForm(tokens);
+                        return s.containsProperty(key) || normalizedKey != null && s.containsProperty(normalizedKey.toString());
+                   });
+        }
+    }
+
+    /**
      * Extracts properties that start with or are equals to the specific prefix and returns them in a new Properties
      * object with the prefix removed.
      *
      * @param properties The Properties to evaluate.
-     * @param prefix The prefix to extract.
+     * @param prefix     The prefix to extract.
      * @return The subset of properties.
      */
     public static Properties extractSubset(final Properties properties, final String prefix) {
@@ -288,23 +333,40 @@ public final class PropertiesUtil {
      * @since 2.6
      */
     public static Map<String, Properties> partitionOnCommonPrefixes(final Properties properties) {
+        return partitionOnCommonPrefixes(properties, false);
+    }
+
+    /**
+     * Partitions a properties map based on common key prefixes up to the first period.
+     *
+     * @param properties properties to partition
+     * @param includeBaseKey when true if a key exists with no '.' the key will be included.
+     * @return the partitioned properties where each key is the common prefix (minus the period) and the values are
+     * new property maps without the prefix and period in the key
+     * @since 2.17.2
+     */
+    public static Map<String, Properties> partitionOnCommonPrefixes(final Properties properties,
+            final boolean includeBaseKey) {
         final Map<String, Properties> parts = new ConcurrentHashMap<>();
         for (final String key : properties.stringPropertyNames()) {
-            final String prefix = key.substring(0, key.indexOf('.'));
+            final int idx = key.indexOf('.');
+            if (idx < 0) {
+                if (includeBaseKey) {
+                    if (!parts.containsKey(key)) {
+                        parts.put(key, new Properties());
+                    }
+                    parts.get(key).setProperty("", properties.getProperty(key));
+                }
+                continue;
+            }
+            final String prefix = key.substring(0, idx);
             if (!parts.containsKey(prefix)) {
                 parts.put(prefix, new Properties());
             }
-            parts.get(prefix).setProperty(key.substring(key.indexOf('.') + 1), properties.getProperty(key));
+            parts.get(prefix).setProperty(key.substring(idx + 1), properties.getProperty(key));
         }
         return parts;
     }
 
-    /**
-     * Returns true if system properties tell us we are running on Windows.
-     * @return true if system properties tell us we are running on Windows.
-     */
-    public boolean isOsWindows() {
-        return getStringProperty("os.name").startsWith("Windows");
-    }
 
 }

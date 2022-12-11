@@ -16,6 +16,18 @@
  */
 package org.apache.logging.log4j.core.layout;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.Layout;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.pattern.DatePatternConverter;
+import org.apache.logging.log4j.core.util.Transform;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.util.Strings;
+
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.LineNumberReader;
@@ -26,19 +38,7 @@ import java.lang.management.ManagementFactory;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.Layout;
-import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.LoggerConfig;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.util.Transform;
-import org.apache.logging.log4j.util.Strings;
+import java.util.Date;
 
 /**
  * Outputs events as rows in an HTML table on an HTML page.
@@ -47,7 +47,8 @@ import org.apache.logging.log4j.util.Strings;
  * characters could result in corrupted log files.
  * </p>
  */
-@Plugin(name = "HtmlLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Plugin
 public final class HtmlLayout extends AbstractStringLayout {
 
     /**
@@ -59,6 +60,7 @@ public final class HtmlLayout extends AbstractStringLayout {
     private static final String REGEXP = Strings.LINE_SEPARATOR.equals("\n") ? "\n" : Strings.LINE_SEPARATOR + "|\n";
     private static final String DEFAULT_TITLE = "Log4j Log Messages";
     private static final String DEFAULT_CONTENT_TYPE = "text/html";
+    private static final String DEFAULT_DATE_PATTERN = "JVM_ELAPSE_TIME";
 
     private final long jvmStartTime = ManagementFactory.getRuntimeMXBean().getStartTime();
 
@@ -69,15 +71,16 @@ public final class HtmlLayout extends AbstractStringLayout {
     private final String font;
     private final String fontSize;
     private final String headerSize;
+    private final DatePatternConverter datePatternConverter;
 
     /**Possible font sizes */
-    public static enum FontSize {
+    public enum FontSize {
         SMALLER("smaller"), XXSMALL("xx-small"), XSMALL("x-small"), SMALL("small"), MEDIUM("medium"), LARGE("large"),
         XLARGE("x-large"), XXLARGE("xx-large"),  LARGER("larger");
 
         private final String size;
 
-        private FontSize(final String size) {
+        FontSize(final String size) {
             this.size = size;
         }
 
@@ -100,7 +103,7 @@ public final class HtmlLayout extends AbstractStringLayout {
     }
 
     private HtmlLayout(final boolean locationInfo, final String title, final String contentType, final Charset charset,
-            final String font, final String fontSize, final String headerSize) {
+            final String font, final String fontSize, final String headerSize, final String datePattern, final String timezone) {
         super(charset);
         this.locationInfo = locationInfo;
         this.title = title;
@@ -108,6 +111,8 @@ public final class HtmlLayout extends AbstractStringLayout {
         this.font = font;
         this.fontSize = fontSize;
         this.headerSize = headerSize;
+        this.datePatternConverter = DEFAULT_DATE_PATTERN.equals(datePattern) ? null
+            : DatePatternConverter.newInstance(new String[] {datePattern, timezone});
     }
 
     /**
@@ -121,6 +126,11 @@ public final class HtmlLayout extends AbstractStringLayout {
      * For testing purposes.
      */
     public boolean isLocationInfo() {
+        return locationInfo;
+    }
+
+    @Override
+    public boolean requiresLocation() {
         return locationInfo;
     }
 
@@ -144,7 +154,12 @@ public final class HtmlLayout extends AbstractStringLayout {
         sbuf.append(Strings.LINE_SEPARATOR).append("<tr>").append(Strings.LINE_SEPARATOR);
 
         sbuf.append("<td>");
-        sbuf.append(event.getTimeMillis() - jvmStartTime);
+
+        if (datePatternConverter == null) {
+            sbuf.append(event.getTimeMillis() - jvmStartTime);
+        } else {
+            datePatternConverter.format(event, sbuf);
+        }
         sbuf.append("</td>").append(Strings.LINE_SEPARATOR);
 
         final String escapedThread = Transform.escapeHtmlTags(event.getThreadName());
@@ -294,7 +309,7 @@ public final class HtmlLayout extends AbstractStringLayout {
         appendLs(sbuf, "</head>");
         appendLs(sbuf, "<body bgcolor=\"#FFFFFF\" topmargin=\"6\" leftmargin=\"6\">");
         appendLs(sbuf, "<hr size=\"1\" noshade=\"noshade\">");
-        appendLs(sbuf, "Log session start time " + new java.util.Date() + "<br>");
+        appendLs(sbuf, "Log session start time " + new Date() + "<br>");
         appendLs(sbuf, "<br>");
         appendLs(sbuf,
                 "<table cellspacing=\"0\" cellpadding=\"4\" border=\"1\" bordercolor=\"#224466\" width=\"100%\">");
@@ -325,33 +340,6 @@ public final class HtmlLayout extends AbstractStringLayout {
     }
 
     /**
-     * Creates an HTML Layout.
-     * @param locationInfo If "true", location information will be included. The default is false.
-     * @param title The title to include in the file header. If none is specified the default title will be used.
-     * @param contentType The content type. Defaults to "text/html".
-     * @param charset The character set to use. If not specified, the default will be used.
-     * @param fontSize The font size of the text.
-     * @param font The font to use for the text.
-     * @return An HTML Layout.
-     */
-    @PluginFactory
-    public static HtmlLayout createLayout(
-            @PluginAttribute(value = "locationInfo") final boolean locationInfo,
-            @PluginAttribute(value = "title", defaultString = DEFAULT_TITLE) final String title,
-            @PluginAttribute("contentType") String contentType,
-            @PluginAttribute(value = "charset", defaultString = "UTF-8") final Charset charset,
-            @PluginAttribute("fontSize") String fontSize,
-            @PluginAttribute(value = "fontName", defaultString = DEFAULT_FONT_FAMILY) final String font) {
-        final FontSize fs = FontSize.getFontSize(fontSize);
-        fontSize = fs.getFontSize();
-        final String headerSize = fs.larger().getFontSize();
-        if (contentType == null) {
-            contentType = DEFAULT_CONTENT_TYPE + "; charset=" + charset;
-        }
-        return new HtmlLayout(locationInfo, title, contentType, charset, font, fontSize, headerSize);
-    }
-
-    /**
      * Creates an HTML Layout using the default settings.
      *
      * @return an HTML Layout.
@@ -360,12 +348,12 @@ public final class HtmlLayout extends AbstractStringLayout {
         return newBuilder().build();
     }
 
-    @PluginBuilderFactory
+    @PluginFactory
     public static Builder newBuilder() {
         return new Builder();
     }
 
-    public static class Builder implements org.apache.logging.log4j.core.util.Builder<HtmlLayout> {
+    public static class Builder implements org.apache.logging.log4j.plugins.util.Builder<HtmlLayout> {
 
         @PluginBuilderAttribute
         private boolean locationInfo = false;
@@ -385,36 +373,52 @@ public final class HtmlLayout extends AbstractStringLayout {
         @PluginBuilderAttribute
         private String fontName = DEFAULT_FONT_FAMILY;
 
+        @PluginBuilderAttribute
+        private String datePattern = DEFAULT_DATE_PATTERN;
+
+        @PluginBuilderAttribute
+        private String timezone = null; // null means default timezone
+
         private Builder() {
         }
 
-        public Builder withLocationInfo(final boolean locationInfo) {
+        public Builder setLocationInfo(final boolean locationInfo) {
             this.locationInfo = locationInfo;
             return this;
         }
 
-        public Builder withTitle(final String title) {
+        public Builder setTitle(final String title) {
             this.title = title;
             return this;
         }
 
-        public Builder withContentType(final String contentType) {
+        public Builder setContentType(final String contentType) {
             this.contentType = contentType;
             return this;
         }
 
-        public Builder withCharset(final Charset charset) {
+        public Builder setCharset(final Charset charset) {
             this.charset = charset;
             return this;
         }
 
-        public Builder withFontSize(final FontSize fontSize) {
+        public Builder setFontSize(final FontSize fontSize) {
             this.fontSize = fontSize;
             return this;
         }
 
-        public Builder withFontName(final String fontName) {
+        public Builder setFontName(final String fontName) {
             this.fontName = fontName;
+            return this;
+        }
+
+        public Builder setDatePattern(final String datePattern) {
+            this.datePattern = datePattern;
+            return this;
+        }
+
+        public Builder setTimezone(final String timezone) {
+            this.timezone = timezone;
             return this;
         }
 
@@ -425,7 +429,7 @@ public final class HtmlLayout extends AbstractStringLayout {
                 contentType = DEFAULT_CONTENT_TYPE + "; charset=" + charset;
             }
             return new HtmlLayout(locationInfo, title, contentType, charset, fontName, fontSize.getFontSize(),
-                fontSize.larger().getFontSize());
+                fontSize.larger().getFontSize(), datePattern, timezone);
         }
     }
 }

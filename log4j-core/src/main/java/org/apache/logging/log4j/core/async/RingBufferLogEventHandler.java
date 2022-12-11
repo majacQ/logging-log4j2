@@ -42,12 +42,25 @@ public class RingBufferLogEventHandler implements
     @Override
     public void onEvent(final RingBufferLogEvent event, final long sequence,
             final boolean endOfBatch) throws Exception {
-        event.execute(endOfBatch);
-        event.clear();
+        try {
+            // RingBufferLogEvents are populated by an EventTranslator. If an exception is thrown during event
+            // translation, the event may not be fully populated, but Disruptor requires that the associated sequence
+            // still be published since a slot has already been claimed in the ring buffer. Ignore any such unpopulated
+            // events. The exception that occurred during translation will have already been propagated.
+            if (event.isPopulated()) {
+                event.execute(endOfBatch);
+            }
+        }
+        finally {
+            event.clear();
+            // notify the BatchEventProcessor that the sequence has progressed.
+            // Without this callback the sequence would not be progressed
+            // until the batch has completely finished.
+            notifyCallback(sequence);
+        }
+    }
 
-        // notify the BatchEventProcessor that the sequence has progressed.
-        // Without this callback the sequence would not be progressed
-        // until the batch has completely finished.
+    private void notifyCallback(final long sequence) {
         if (++counter > NOTIFY_PROGRESS_THRESHOLD) {
             sequenceCallback.set(sequence);
             counter = 0;

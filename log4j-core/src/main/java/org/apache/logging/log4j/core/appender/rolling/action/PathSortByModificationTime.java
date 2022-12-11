@@ -17,17 +17,18 @@
 
 package org.apache.logging.log4j.core.appender.rolling.action;
 
-import java.io.Serializable;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
+import java.io.Serializable;
 
 /**
  * {@link PathSorter} that sorts path by their LastModified attribute.
  */
-@Plugin(name = "SortByModificationTime", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin("SortByModificationTime")
 public class PathSortByModificationTime implements PathSorter, Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -37,7 +38,7 @@ public class PathSortByModificationTime implements PathSorter, Serializable {
 
     /**
      * Constructs a new SortByModificationTime sorter.
-     * 
+     *
      * @param recentFirst if true, most recently modified paths should come first
      */
     public PathSortByModificationTime(final boolean recentFirst) {
@@ -47,19 +48,19 @@ public class PathSortByModificationTime implements PathSorter, Serializable {
 
     /**
      * Create a PathSorter that sorts by lastModified time.
-     * 
+     *
      * @param recentFirst if true, most recently modified paths should come first.
      * @return A PathSorter.
      */
     @PluginFactory
-    public static PathSorter createSorter( //
-            @PluginAttribute(value = "recentFirst", defaultBoolean = true) final boolean recentFirst) {
+    public static PathSorter createSorter(
+            @PluginAttribute(defaultBoolean = true) final boolean recentFirst) {
         return new PathSortByModificationTime(recentFirst);
     }
 
     /**
      * Returns whether this sorter sorts recent files first.
-     * 
+     *
      * @return whether this sorter sorts recent files first
      */
     public boolean isRecentFirst() {
@@ -68,7 +69,7 @@ public class PathSortByModificationTime implements PathSorter, Serializable {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see java.util.Comparator#compare(java.lang.Object, java.lang.Object)
      */
     @Override

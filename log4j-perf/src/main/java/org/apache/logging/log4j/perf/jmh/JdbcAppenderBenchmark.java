@@ -14,7 +14,6 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.perf.jmh;
 
 import java.sql.Connection;
@@ -26,10 +25,10 @@ import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
-import org.apache.logging.log4j.core.appender.db.jdbc.JdbcAppender;
 import org.apache.logging.log4j.core.config.ConfigurationFactory;
 import org.apache.logging.log4j.core.config.DefaultConfiguration;
 import org.apache.logging.log4j.core.util.Closer;
+import org.apache.logging.log4j.jdbc.appender.JdbcAppender;
 import org.apache.logging.log4j.status.StatusLogger;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -173,7 +172,7 @@ public class JdbcAppenderBenchmark {
 
     private String toCreateTableSqlStringH2(final String tableName) {
         return "CREATE TABLE " + tableName + " ( "
-                + "id INTEGER IDENTITY, eventDate DATETIME, literalColumn VARCHAR(255), level NVARCHAR(10), "
+                + "id INTEGER GENERATED ALWAYS AS IDENTITY, eventDate DATETIME, literalColumn VARCHAR(255), level NVARCHAR(10), "
                 + "logger NVARCHAR(255), message VARCHAR(1024), exception NCLOB" + " )";
     }
 

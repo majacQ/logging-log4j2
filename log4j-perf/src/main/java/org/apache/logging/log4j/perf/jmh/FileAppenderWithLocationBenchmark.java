@@ -20,8 +20,6 @@ package org.apache.logging.log4j.perf.jmh;
 import java.io.File;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.FileHandler;
-import java.util.logging.Level;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -99,6 +97,13 @@ public class FileAppenderWithLocationBenchmark {
     @Benchmark
     public void log4j2File() {
         log4j2Logger.debug(MESSAGE);
+    }
+
+    @BenchmarkMode(Mode.Throughput)
+    @OutputTimeUnit(TimeUnit.SECONDS)
+    @Benchmark
+    public void log4j2FluentFile() {
+        log4j2Logger.atDebug().withLocation().log(MESSAGE);
     }
 
     @BenchmarkMode(Mode.Throughput)

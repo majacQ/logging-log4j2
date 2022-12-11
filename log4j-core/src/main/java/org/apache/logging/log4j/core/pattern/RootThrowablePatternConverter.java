@@ -18,8 +18,9 @@ package org.apache.logging.log4j.core.pattern;
 
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.Plugin;
 import org.apache.logging.log4j.util.Strings;
 
 /**
@@ -30,7 +31,8 @@ import org.apache.logging.log4j.util.Strings;
  * The extended stack trace will also include the location of where the class was loaded from and the
  * version of the jar if available.
  */
-@Plugin(name = "RootThrowablePatternConverter", category = PatternConverter.CATEGORY)
+@Namespace(PatternConverter.CATEGORY)
+@Plugin("RootThrowablePatternConverter")
 @ConverterKeys({ "rEx", "rThrowable", "rException" })
 public final class RootThrowablePatternConverter extends ThrowablePatternConverter {
 
@@ -68,8 +70,7 @@ public final class RootThrowablePatternConverter extends ThrowablePatternConvert
                 super.format(event, toAppendTo);
                 return;
             }
-            String suffix = getSuffix(event);
-            final String trace = proxy.getCauseStackTraceAsString(options.getIgnorePackages(), suffix);
+            final String trace = proxy.getCauseStackTraceAsString(options.getIgnorePackages(), options.getTextRenderer(), getSuffix(event), options.getSeparator());
             final int len = toAppendTo.length();
             if (len > 0 && !Character.isWhitespace(toAppendTo.charAt(len - 1))) {
                 toAppendTo.append(' ');

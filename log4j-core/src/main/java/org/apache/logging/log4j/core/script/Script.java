@@ -16,43 +16,14 @@
  */
 package org.apache.logging.log4j.core.script;
 
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.config.plugins.PluginValue;
-
 /**
- * Container for the language and body of a script.
+ * Represents int
  */
-@Plugin(name = "Script", category = Node.CATEGORY, printObject = true)
-public class Script extends AbstractScript {
+public interface Script {
 
-    public Script(final String name, final String language, final String scriptText) {
-        super(name, language, scriptText);
-    }
+    String getLanguage();
 
-    @PluginFactory
-    public static Script createScript(
-            // @formatter:off
-            @PluginAttribute("name") final String name,
-            @PluginAttribute("language") String language,
-            @PluginValue("scriptText") final String scriptText) {
-            // @formatter:on
-        if (language == null) {
-            LOGGER.info("No script language supplied, defaulting to {}", DEFAULT_LANGUAGE);
-            language = DEFAULT_LANGUAGE;
-        }
-        if (scriptText == null) {
-            LOGGER.error("No scriptText attribute provided for ScriptFile {}", name);
-            return null;
-        }
-        return new Script(name, language, scriptText);
+    String getScriptText();
 
-    }
-
-    @Override
-    public String toString() {
-        return getName() != null ? getName() : super.toString();
-    }
+    String getName();
 }

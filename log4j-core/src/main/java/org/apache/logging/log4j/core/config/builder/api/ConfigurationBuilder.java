@@ -25,7 +25,7 @@ import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationSource;
-import org.apache.logging.log4j.core.util.Builder;
+import org.apache.logging.log4j.plugins.util.Builder;
 
 /**
  * Interface for building logging configurations.
@@ -94,7 +94,7 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
 
 
     /**
-     * Returns a builder for creating Async Loggers.
+     * Returns a builder for creating scripts. Requires {@code log4j-script}.
      * @param name The name of the Logger.
      * @param language The script language
      * @param text The script to execute.
@@ -103,7 +103,7 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
     ScriptComponentBuilder newScript(String name, String language, String text);
 
     /**
-     * Returns a builder for creating Async Loggers.
+     * Returns a builder for creating script files. Requires {@code log4j-script}.
      * @param path The location of the script file.
      * @return A new ScriptFileComponentBuilder.
      */
@@ -111,7 +111,7 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
 
 
     /**
-     * Returns a builder for creating Async Loggers.
+     * Returns a builder for creating script files. Requires {@code log4j-script}.
      * @param name The name of the script file.
      * @param path The location of the script file.
      * @return A new ScriptFileComponentBuilder.
@@ -133,6 +133,22 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
      * @return A new AppenderRefComponentBuilder.
      */
     AppenderRefComponentBuilder newAppenderRef(String ref);
+
+
+    /**
+     * Returns a builder for creating Async Loggers.
+     * @param name The name of the Logger.
+     * @return A new LoggerComponentBuilder.
+     */
+    LoggerComponentBuilder newAsyncLogger(String name);
+
+    /**
+     * Returns a builder for creating Async Loggers.
+     * @param name The name of the Logger.
+     * @param includeLocation If true include location information.
+     * @return A new LoggerComponentBuilder.
+     */
+    LoggerComponentBuilder newAsyncLogger(String name, boolean includeLocation);
 
     /**
      * Returns a builder for creating Async Loggers.
@@ -167,6 +183,20 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
      * @return A new LoggerComponentBuilder.
      */
     LoggerComponentBuilder newAsyncLogger(String name, String level, boolean includeLocation);
+
+    /**
+     * Returns a builder for creating the async root Logger.
+     * @return A new RootLoggerComponentBuilder.
+     */
+    RootLoggerComponentBuilder newAsyncRootLogger();
+
+
+    /**
+     * Returns a builder for creating the async root Logger.
+     * @param includeLocation If true include location information.
+     * @return A new RootLoggerComponentBuilder.
+     */
+    RootLoggerComponentBuilder newAsyncRootLogger(boolean includeLocation);
 
     /**
      * Returns a builder for creating the async root Logger.
@@ -255,19 +285,19 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
      * Returns a builder for creating Filters.
      * @param pluginName The Plugin type of the Filter.
      * @param onMatch "ACCEPT", "DENY", or "NEUTRAL"
-     * @param onMisMatch "ACCEPT", "DENY", or "NEUTRAL"
+     * @param onMismatch "ACCEPT", "DENY", or "NEUTRAL"
      * @return A new FilterComponentBuilder.
      */
-    FilterComponentBuilder newFilter(String pluginName, Filter.Result onMatch, Filter.Result onMisMatch);
+    FilterComponentBuilder newFilter(String pluginName, Filter.Result onMatch, Filter.Result onMismatch);
 
     /**
      * Returns a builder for creating Filters.
      * @param pluginName The Plugin type of the Filter.
      * @param onMatch "ACCEPT", "DENY", or "NEUTRAL"
-     * @param onMisMatch "ACCEPT", "DENY", or "NEUTRAL"
+     * @param onMismatch "ACCEPT", "DENY", or "NEUTRAL"
      * @return A new FilterComponentBuilder.
      */
-    FilterComponentBuilder newFilter(String pluginName, String onMatch, String onMisMatch);
+    FilterComponentBuilder newFilter(String pluginName, String onMatch, String onMismatch);
 
     /**
      * Returns a builder for creating Layouts.
@@ -275,6 +305,21 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
      * @return A new LayoutComponentBuilder.
      */
     LayoutComponentBuilder newLayout(String pluginName);
+
+    /**
+     * Returns a builder for creating Loggers.
+     * @param name The name of the Logger.
+     * @return A new LoggerComponentBuilder.
+     */
+    LoggerComponentBuilder newLogger(String name);
+
+    /**
+     * Returns a builder for creating Loggers.
+     * @param name The name of the Logger.
+     * @param includeLocation If true include location information.
+     * @return A new LoggerComponentBuilder.
+     */
+    LoggerComponentBuilder newLogger(String name, boolean includeLocation);
 
     /**
      * Returns a builder for creating Loggers.
@@ -309,6 +354,19 @@ public interface ConfigurationBuilder<T extends Configuration> extends Builder<T
      * @return A new LoggerComponentBuilder.
      */
     LoggerComponentBuilder newLogger(String name, String level, boolean includeLocation);
+
+    /**
+     * Returns a builder for creating the root Logger.
+     * @return A new RootLoggerComponentBuilder.
+     */
+    RootLoggerComponentBuilder newRootLogger();
+
+    /**
+     * Returns a builder for creating the root Logger.
+     * @param includeLocation If true include location information.
+     * @return A new RootLoggerComponentBuilder.
+     */
+    RootLoggerComponentBuilder newRootLogger(boolean includeLocation);
 
     /**
      * Returns a builder for creating the root Logger.

@@ -17,6 +17,8 @@
 
 package org.apache.logging.log4j.jul;
 
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.logging.Filter;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
@@ -25,6 +27,7 @@ import java.util.logging.Logger;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.MessageFactory;
 import org.apache.logging.log4j.spi.ExtendedLogger;
+import org.apache.logging.log4j.status.StatusLogger;
 
 /**
  * Log4j API implementation of the JUL {@link Logger} class. <strong>Note that this implementation does
@@ -47,7 +50,15 @@ public class ApiLogger extends Logger {
 
     ApiLogger(final ExtendedLogger logger) {
         super(logger.getName(), null);
-        super.setLevel(LevelTranslator.toJavaLevel(logger.getLevel()));
+        final Level javaLevel = LevelTranslator.toJavaLevel(logger.getLevel());
+        // "java.util.logging.LoggingPermission" "control"
+        AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            @Override
+            public Object run() {
+                ApiLogger.super.setLevel(javaLevel);
+                return null;
+            }
+        });
         this.logger = new WrappedLogger(logger);
     }
 
@@ -84,7 +95,8 @@ public class ApiLogger extends Logger {
 
     @Override
     public void setLevel(final Level newLevel) throws SecurityException {
-        throw new UnsupportedOperationException("Cannot set level through log4j-api");
+        StatusLogger.getLogger().error("Cannot set JUL log level through log4j-api: " +
+                "ignoring call to Logger.setLevel({})", newLevel);
     }
 
     /**
@@ -109,22 +121,38 @@ public class ApiLogger extends Logger {
 
     @Override
     public void log(final Level level, final String msg) {
-        logger.log(LevelTranslator.toLevel(level), msg);
+        if (getFilter() == null) {
+            logger.log(LevelTranslator.toLevel(level), msg);
+        } else {
+            super.log(level, msg);
+        }
     }
 
     @Override
     public void log(final Level level, final String msg, final Object param1) {
-        logger.log(LevelTranslator.toLevel(level), msg, param1);
+        if (getFilter() == null) {
+            logger.log(LevelTranslator.toLevel(level), msg, param1);
+        } else {
+            super.log(level, msg, param1);
+        }
     }
 
     @Override
     public void log(final Level level, final String msg, final Object[] params) {
-        logger.log(LevelTranslator.toLevel(level), msg, params);
+        if (getFilter() == null) {
+            logger.log(LevelTranslator.toLevel(level), msg, params);
+        } else {
+            super.log(level, msg, params);
+        }
     }
 
     @Override
     public void log(final Level level, final String msg, final Throwable thrown) {
-        logger.log(LevelTranslator.toLevel(level), msg, thrown);
+        if (getFilter() == null) {
+            logger.log(LevelTranslator.toLevel(level), msg, thrown);
+        } else {
+            super.log(level, msg, thrown);
+        }
     }
 
     @Override
@@ -176,27 +204,27 @@ public class ApiLogger extends Logger {
 
     @Override
     public void entering(final String sourceClass, final String sourceMethod) {
-        logger.entry();
+        logger.traceEntry();
     }
 
     @Override
     public void entering(final String sourceClass, final String sourceMethod, final Object param1) {
-        logger.entry(param1);
+        logger.traceEntry(null, param1);
     }
 
     @Override
     public void entering(final String sourceClass, final String sourceMethod, final Object[] params) {
-        logger.entry(params);
+        logger.traceEntry(null, params);
     }
 
     @Override
     public void exiting(final String sourceClass, final String sourceMethod) {
-        logger.exit();
+        logger.traceExit();
     }
 
     @Override
     public void exiting(final String sourceClass, final String sourceMethod, final Object result) {
-        logger.exit(result);
+        logger.traceExit(result);
     }
 
     @Override
@@ -206,36 +234,64 @@ public class ApiLogger extends Logger {
 
     @Override
     public void severe(final String msg) {
-        logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.ERROR, null, msg);
+        if (getFilter() == null) {
+            logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.ERROR, null, msg);
+        } else {
+            super.severe(msg);
+        }
     }
 
     @Override
     public void warning(final String msg) {
-        logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.WARN, null, msg);
+        if (getFilter() == null) {
+            logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.WARN, null, msg);
+        } else {
+            super.warning(msg);
+        }
     }
 
     @Override
     public void info(final String msg) {
-        logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.INFO, null, msg);
+        if (getFilter() == null) {
+            logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.INFO, null, msg);
+        } else {
+            super.info(msg);
+        }
     }
 
     @Override
     public void config(final String msg) {
-        logger.logIfEnabled(FQCN, LevelTranslator.CONFIG, null, msg);
+        if (getFilter() == null) {
+            logger.logIfEnabled(FQCN, LevelTranslator.CONFIG, null, msg);
+        } else {
+            super.config(msg);
+        }
     }
 
     @Override
     public void fine(final String msg) {
-        logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.DEBUG, null, msg);
+        if (getFilter() == null) {
+            logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.DEBUG, null, msg);
+        } else {
+            super.fine(msg);
+        }
     }
 
     @Override
     public void finer(final String msg) {
-        logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.TRACE, null, msg);
+        if (getFilter() == null) {
+            logger.logIfEnabled(FQCN, org.apache.logging.log4j.Level.TRACE, null, msg);
+        } else {
+            super.finer(msg);
+        }
     }
 
     @Override
     public void finest(final String msg) {
-        logger.logIfEnabled(FQCN, LevelTranslator.FINEST, null, msg);
+        if (getFilter() == null) {
+            logger.logIfEnabled(FQCN, LevelTranslator.FINEST, null, msg);
+        } else {
+            super.finest(msg);
+        }
     }
 }

@@ -28,35 +28,36 @@ import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
 import org.apache.logging.log4j.core.net.Facility;
 import org.apache.logging.log4j.core.net.Priority;
 import org.apache.logging.log4j.core.util.NetUtils;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.util.Chars;
 
 /**
  * Formats a log event as a BSD Log record.
  */
-@Plugin(name = "SyslogLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Plugin
 public final class SyslogLayout extends AbstractStringLayout {
 
     /**
      * Builds a SyslogLayout.
      * <p>The main arguments are</p>
-     * <ul> 
+     * <ul>
      * <li>facility: The Facility is used to try to classify the message.</li>
      * <li>includeNewLine: If true a newline will be appended to the result.</li>
      * <li>escapeNL: Pattern to use for replacing newlines.</li>
      * <li>charset: The character set.</li>
-     * </ul> 
+     * </ul>
      * @param <B> the builder type
      */
     public static class Builder<B extends Builder<B>> extends AbstractStringLayout.Builder<B>
-            implements org.apache.logging.log4j.core.util.Builder<SyslogLayout> {
-        
+            implements org.apache.logging.log4j.plugins.util.Builder<SyslogLayout> {
+
         public Builder() {
             super();
             setCharset(StandardCharsets.UTF_8);
@@ -104,8 +105,8 @@ public final class SyslogLayout extends AbstractStringLayout {
         }
 
     }
-    
-    @PluginBuilderFactory
+
+    @PluginFactory
     public static <B extends Builder<B>> B newBuilder() {
         return new Builder<B>().asBuilder();
     }
@@ -123,7 +124,7 @@ public final class SyslogLayout extends AbstractStringLayout {
      * Date format used if header = true.
      */
     private final SimpleDateFormat dateFormat = new SimpleDateFormat("MMM dd HH:mm:ss", Locale.ENGLISH);
-    
+
     /**
      * Host name used to identify messages from this appender.
      */
@@ -137,7 +138,7 @@ public final class SyslogLayout extends AbstractStringLayout {
     }
 
     /**
-     * Formats a {@link org.apache.logging.log4j.core.LogEvent} in conformance with the BSD Log record format.
+     * Formats a {@link LogEvent} in conformance with the BSD Log record format.
      *
      * @param event The LogEvent
      * @return the event formatted as a String.
@@ -184,7 +185,7 @@ public final class SyslogLayout extends AbstractStringLayout {
      * <li>Key: "formatType" Value: "logfilepatternreceiver" (format uses the keywords supported by
      * LogFilePatternReceiver)</li>
      * </ul>
-     * 
+     *
      * @return Map of content format keys supporting SyslogLayout
      */
     @Override
@@ -198,24 +199,8 @@ public final class SyslogLayout extends AbstractStringLayout {
     }
 
     /**
-     * Creates a SyslogLayout.
-     * 
-     * @param facility The Facility is used to try to classify the message.
-     * @param includeNewLine If true a newline will be appended to the result.
-     * @param escapeNL Pattern to use for replacing newlines.
-     * @param charset The character set.
-     * @return A SyslogLayout.
-     * @deprecated Use {@link #newBuilder()}.
-     */
-    @Deprecated
-    public static SyslogLayout createLayout(final Facility facility, final boolean includeNewLine,
-                                            final String escapeNL, final Charset charset) {
-        return new SyslogLayout(facility, includeNewLine, escapeNL, charset);
-    }
-
-    /**
      * Gets the facility.
-     * 
+     *
      * @return the facility
      */
     public Facility getFacility() {

@@ -19,7 +19,6 @@ package org.apache.logging.log4j.perf.jmh;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.Level;
@@ -28,10 +27,12 @@ import org.apache.logging.log4j.ThreadContext.ContextStack;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.layout.ByteBufferDestination;
+import org.apache.logging.log4j.core.layout.ByteBufferDestinationHelper;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.core.layout.StringBuilderEncoder;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.SimpleMessage;
+import org.apache.logging.log4j.util.StringMap;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Mode;
@@ -61,7 +62,19 @@ public class TextEncoderHelperBenchmark {
 
     final static LogEvent EVENT = createLogEvent();
     private static final Charset CHARSET_DEFAULT = Charset.defaultCharset();
-    private final PatternLayout PATTERN_M_C_D = PatternLayout.createLayout("%d %c %m%n", null, null, null, CHARSET_DEFAULT, false, true, null, null);
+
+    private final PatternLayout PATTERN_M_C_D = PatternLayout.newBuilder()
+            .setPattern((String) "%d %c %m%n")
+            .setPatternSelector(null)
+            .setConfiguration(null)
+            .setRegexReplacement(null)
+            .setCharset((Charset) CHARSET_DEFAULT)
+            .setAlwaysWriteExceptions(false)
+            .setNoConsoleNoAnsi(true)
+            .setHeader(null)
+            .setFooter(null)
+            .build();
+
     private final Destination destination = new Destination();
 
     class Destination implements ByteBufferDestination {
@@ -80,6 +93,16 @@ public class TextEncoderHelperBenchmark {
             buf.clear();
             return buf;
         }
+
+        @Override
+        public void writeBytes(final ByteBuffer data) {
+            ByteBufferDestinationHelper.writeToUnsynchronized(data, this);
+        }
+
+        @Override
+        public void writeBytes(final byte[] data, final int offset, final int length) {
+            ByteBufferDestinationHelper.writeToUnsynchronized(data, offset, length, this);
+        }
     }
 
     private static LogEvent createLogEvent() {
@@ -88,7 +111,7 @@ public class TextEncoderHelperBenchmark {
         final Level level = Level.DEBUG;
         final Message message = new SimpleMessage(STR);
         final Throwable t = null;
-        final Map<String, String> mdc = null;
+        final StringMap mdc = null;
         final ContextStack ndc = null;
         final String threadName = null;
         final StackTraceElement location = null;
@@ -101,7 +124,7 @@ public class TextEncoderHelperBenchmark {
                 .setLevel(level) //
                 .setMessage(message) //
                 .setThrown(t) //
-                .setContextMap(mdc) //
+                .setContextData(mdc) //
                 .setContextStack(ndc) //
                 .setThreadName(threadName) //
                 .setSource(location) //
@@ -182,7 +205,7 @@ public class TextEncoderHelperBenchmark {
         final int length = Math.min(source.length() - offset, destination.remaining());
         final char[] array = destination.array();
         final int start = destination.position();
-        source.getChars(offset, offset+length, array, start);
+        source.getChars(offset, offset + length, array, destination.arrayOffset() + start);
         destination.position(start + length);
         return length;
     }

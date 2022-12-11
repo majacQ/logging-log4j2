@@ -20,20 +20,21 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
+import org.apache.logging.log4j.plugins.Plugin;
 import org.apache.logging.log4j.status.StatusLogger;
 
 /**
  * Looks up keys from system properties.
  */
-@Plugin(name = "sys", category = StrLookup.CATEGORY)
+@Lookup
+@Plugin("sys")
 public class SystemPropertiesLookup extends AbstractLookup {
 
     private static final Logger LOGGER = StatusLogger.getLogger();
     private static final Marker LOOKUP = MarkerManager.getMarker("LOOKUP");
 
     /**
-     * Looks up the value for the key using the data in the LogEvent.
+     * Looks up the value for the key from system properties.
      * @param event The current LogEvent.
      * @param key  the key to be looked up, may be null
      * @return The value associated with the key.

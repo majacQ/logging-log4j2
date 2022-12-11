@@ -16,6 +16,8 @@
  */
 package org.apache.logging.log4j.core.config.plugins;
 
+import org.apache.logging.log4j.plugins.FactoryType;
+
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -28,10 +30,13 @@ import java.lang.annotation.Target;
  * <p>
  * There can only be one factory method per class.
  * </p>
+ * @deprecated Exists for compatibility with Log4j 2 2.x plugins. Not used for Log4j 2 3.x plugins.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
+@FactoryType
+@Deprecated(since = "3.0.0")
 public @interface PluginFactory {
     // empty
 }

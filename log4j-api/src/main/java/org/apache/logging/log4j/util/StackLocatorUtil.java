@@ -16,40 +16,22 @@
  */
 package org.apache.logging.log4j.util;
 
-import java.util.Stack;
+import java.util.Deque;
+import java.util.NoSuchElementException;
+import java.util.function.Predicate;
+
+import org.apache.logging.log4j.status.StatusLogger;
 
 /**
  * <em>Consider this class private.</em> Provides various methods to determine the caller class. <h3>Background</h3>
  */
+@InternalApi
 public final class StackLocatorUtil {
     private static StackLocator stackLocator = null;
+    private static volatile boolean errorLogged;
 
     static {
-        try {
-            final Class<?> stackLocatorClass = LoaderUtil.loadClass("org.apache.logging.log4j.util.StackWalkerStackLocator");
-            stackLocator = (StackLocator) stackLocatorClass.newInstance();
-        } catch (NoClassDefFoundError e) {
-            // Ignore this error.
-        } catch (ClassNotFoundException e) {
-            // Ignore this exception.
-        } catch (InstantiationException e) {
-            // Ignore this exception.
-        } catch (IllegalAccessException e) {
-            // Ignore this exception.
-        } catch (UnsupportedClassVersionError e) {
-            // Ignore this error.
-        }
-        if (stackLocator == null) {
-            try {
-                final Class<?> stackLocatorClass = LoaderUtil.loadClass("sun.reflect.Reflection");
-                stackLocator = ReflectionStackLocator.getInstance();
-            } catch (ClassNotFoundException cnfe) {
-                // Ignore this exception.
-            }
-        }
-        if (stackLocator == null) {
-            stackLocator = new DefaultStackLocator();
-        }
+        stackLocator = StackLocator.getInstance();
     }
 
     private StackLocatorUtil() {
@@ -67,16 +49,60 @@ public final class StackLocatorUtil {
     public static StackTraceElement getStackTraceElement(final int depth) {
         return stackLocator.getStackTraceElement(depth + 1);
     }
+
+    /**
+     * Equivalent to {@link #getCallerClass(String, String)} with an empty {@code pkg}.
+     */
     // migrated from ClassLoaderContextSelector
     @PerformanceSensitive
     public static Class<?> getCallerClass(final String fqcn) {
         return getCallerClass(fqcn, Strings.EMPTY);
     }
 
-    // migrated from Log4jLoggerFactory
+    /**
+     * Search for a calling class.
+     *
+     * @param fqcn Root class name whose caller to search for.
+     * @param pkg Package name prefix that must be matched after the {@code fqcn} has been found.
+     * @return The caller class that was matched, or null if one could not be located.
+     */
     @PerformanceSensitive
     public static Class<?> getCallerClass(final String fqcn, final String pkg) {
         return stackLocator.getCallerClass(fqcn, pkg);
+    }
+
+    /**
+     * Gets the ClassLoader of the class that called <em>this</em> method at the location up the call stack by the given
+     * stack frame depth.
+     * <p>
+     * This method returns {@code null} if:
+     * </p>
+     * <ul>
+     * <li>{@code sun.reflect.Reflection.getCallerClass(int)} is not present.</li>
+     * <li>An exception is caught calling {@code sun.reflect.Reflection.getCallerClass(int)}.</li>
+     * <li>Some Class implementations may use null to represent the bootstrap class loader.</li>
+     * </ul>
+     *
+     * @param depth The stack frame count to walk.
+     * @return A class or null.
+     * @throws IndexOutOfBoundsException if depth is negative.
+     */
+    @PerformanceSensitive
+    public static ClassLoader getCallerClassLoader(final int depth) {
+        final Class<?> callerClass = stackLocator.getCallerClass(depth + 1);
+        return callerClass != null ? callerClass.getClassLoader() : null;
+    }
+
+    /**
+     * Search for a calling class.
+     *
+     * @param sentinelClass Sentinel class at which to begin searching
+     * @param callerPredicate Predicate checked after the sentinelClass is found
+     * @return the first matching class after <code>sentinelClass</code> is found.
+     */
+    @PerformanceSensitive
+    public static Class<?> getCallerClass(final Class<?> sentinelClass, final Predicate<Class<?>> callerPredicate) {
+        return stackLocator.getCallerClass(sentinelClass, callerPredicate);
     }
 
     // added for use in LoggerAdapter implementations mainly
@@ -87,11 +113,19 @@ public final class StackLocatorUtil {
 
     // migrated from ThrowableProxy
     @PerformanceSensitive
-    public static Stack<Class<?>> getCurrentStackTrace() {
+    public static Deque<Class<?>> getCurrentStackTrace() {
         return stackLocator.getCurrentStackTrace();
     }
 
     public static StackTraceElement calcLocation(final String fqcnOfLogger) {
-        return stackLocator.calcLocation(fqcnOfLogger);
+        try {
+            return stackLocator.calcLocation(fqcnOfLogger);
+        } catch (final NoSuchElementException ex) {
+            if (!errorLogged) {
+                errorLogged = true;
+                StatusLogger.getLogger().warn("Unable to locate stack trace element for {}", fqcnOfLogger, ex);
+            }
+            return null;
+        }
     }
 }

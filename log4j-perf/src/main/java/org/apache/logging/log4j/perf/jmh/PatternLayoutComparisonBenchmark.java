@@ -20,7 +20,6 @@ package org.apache.logging.log4j.perf.jmh;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.util.Map;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
@@ -30,6 +29,7 @@ import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.SimpleMessage;
+import org.apache.logging.log4j.util.StringMap;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -59,8 +59,18 @@ public class PatternLayoutComparisonBenchmark {
     final static LogEvent LOG4J2EVENT = createLog4j2Event();
     private static final Charset CHARSET_DEFAULT = Charset.defaultCharset();
     private static final String LOG4JPATTERN = "%d %5p [%t] %c{1} %X{transactionId} - %m%n";
-    private final PatternLayout LOG4J2_PATTERN_LAYOUT = PatternLayout.createLayout(LOG4JPATTERN, null,
-            null, null, CHARSET_DEFAULT, false, true, null, null);
+
+    private final PatternLayout LOG4J2_PATTERN_LAYOUT = PatternLayout.newBuilder()
+            .setPattern((String) LOG4JPATTERN)
+            .setPatternSelector(null)
+            .setConfiguration(null)
+            .setRegexReplacement(null)
+            .setCharset((Charset) CHARSET_DEFAULT)
+            .setAlwaysWriteExceptions(false)
+            .setNoConsoleNoAnsi(true)
+            .setHeader(null)
+            .setFooter(null)
+            .build();
 
     private static LogEvent createLog4j2Event() {
         final Marker marker = null;
@@ -68,7 +78,7 @@ public class PatternLayoutComparisonBenchmark {
         final Level level = Level.DEBUG;
         final Message message = new SimpleMessage(STR);
         final Throwable t = null;
-        final Map<String, String> mdc = null;
+        final StringMap mdc = null;
         final ContextStack ndc = null;
         final String threadName = null;
         final StackTraceElement location = null;
@@ -81,7 +91,7 @@ public class PatternLayoutComparisonBenchmark {
                 .setLevel(level) //
                 .setMessage(message) //
                 .setThrown(t) //
-                .setContextMap(mdc) //
+                .setContextData(mdc) //
                 .setContextStack(ndc) //
                 .setThreadName(threadName) //
                 .setSource(location) //

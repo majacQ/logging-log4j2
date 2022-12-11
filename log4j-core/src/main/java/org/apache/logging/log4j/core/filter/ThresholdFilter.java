@@ -21,11 +21,11 @@ import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.util.PerformanceSensitive;
 
 /**
@@ -36,7 +36,8 @@ import org.apache.logging.log4j.util.PerformanceSensitive;
  *
  * The default Level is ERROR.
  */
-@Plugin(name = "ThresholdFilter", category = Node.CATEGORY, elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Plugin
 @PerformanceSensitive("allocation")
 public final class ThresholdFilter extends AbstractFilter {
 
@@ -153,15 +154,16 @@ public final class ThresholdFilter extends AbstractFilter {
     }
 
     /**
-     * Create a ThresholdFilter.
+     * Creates a ThresholdFilter.
      * @param level The log Level.
      * @param match The action to take on a match.
      * @param mismatch The action to take on a mismatch.
      * @return The created ThresholdFilter.
      */
+    // TODO Consider refactoring to use AbstractFilter.AbstractFilterBuilder
     @PluginFactory
     public static ThresholdFilter createFilter(
-            @PluginAttribute("level") final Level level,
+            @PluginAttribute final Level level,
             @PluginAttribute("onMatch") final Result match,
             @PluginAttribute("onMismatch") final Result mismatch) {
         final Level actualLevel = level == null ? Level.ERROR : level;

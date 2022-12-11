@@ -14,7 +14,6 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.core.pattern;
 
 import org.apache.logging.log4j.util.PerformanceSensitive;
@@ -28,6 +27,11 @@ public final class FormattingInfo {
      * Array of spaces.
      */
     private static final char[] SPACES = new char[] { ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ' };
+
+    /**
+     * Array of zeros.
+     */
+    private static final char[] ZEROS = new char[] { '0', '0', '0', '0', '0', '0', '0', '0' };
 
     /**
      * Default instance.
@@ -55,6 +59,16 @@ public final class FormattingInfo {
     private final boolean leftTruncate;
 
     /**
+     * Use zero-padding instead whitespace padding
+     */
+    private final boolean zeroPad;
+
+    /**
+     * Empty array.
+     */
+    public static final FormattingInfo[] EMPTY_ARRAY = {};
+
+    /**
      * Creates new instance.
      *
      * @param leftAlign
@@ -67,10 +81,29 @@ public final class FormattingInfo {
      *            truncates to the left if true
      */
     public FormattingInfo(final boolean leftAlign, final int minLength, final int maxLength, final boolean leftTruncate) {
+        this(leftAlign, minLength, maxLength, leftTruncate, false);
+    }
+
+    /**
+     * Creates new instance.
+     *
+     * @param leftAlign
+     *            left align if true.
+     * @param minLength
+     *            minimum length.
+     * @param maxLength
+     *            maximum length.
+     * @param leftTruncate
+     *            truncates to the left if true
+     * @param zeroPad
+     *            use zero-padding instead of whitespace-padding
+     */
+    public FormattingInfo(final boolean leftAlign, final int minLength, final int maxLength, final boolean leftTruncate, final boolean zeroPad) {
         this.leftAlign = leftAlign;
         this.minLength = minLength;
         this.maxLength = maxLength;
         this.leftTruncate = leftTruncate;
+        this.zeroPad = zeroPad;
     }
 
     /**
@@ -97,8 +130,17 @@ public final class FormattingInfo {
      * @return true if left truncated.
      */
     public boolean isLeftTruncate() {
-		return leftTruncate;
-	}
+        return leftTruncate;
+    }
+
+    /**
+     * Determine if zero-padded.
+     *
+     * @return true if zero-padded.
+     */
+    public boolean isZeroPad() {
+        return zeroPad;
+    }
 
     /**
      * Get minimum length.
@@ -130,11 +172,11 @@ public final class FormattingInfo {
         final int rawLength = buffer.length() - fieldStart;
 
         if (rawLength > maxLength) {
-			if (leftTruncate) {
-				buffer.delete(fieldStart, buffer.length() - maxLength);
-			} else {
-				buffer.delete(fieldStart + maxLength, fieldStart + buffer.length());
-			}
+            if (leftTruncate) {
+                buffer.delete(fieldStart, buffer.length() - maxLength);
+            } else {
+                buffer.delete(fieldStart + maxLength, fieldStart + buffer.length());
+            }
         } else if (rawLength < minLength) {
             if (leftAlign) {
                 final int fieldEnd = buffer.length();
@@ -146,11 +188,13 @@ public final class FormattingInfo {
             } else {
                 int padLength = minLength - rawLength;
 
-                for (; padLength > SPACES.length; padLength -= SPACES.length) {
-                    buffer.insert(fieldStart, SPACES);
+                final char[] paddingArray= zeroPad ? ZEROS : SPACES;
+
+                for (; padLength > paddingArray.length; padLength -= paddingArray.length) {
+                    buffer.insert(fieldStart, paddingArray);
                 }
 
-                buffer.insert(fieldStart, SPACES, 0, padLength);
+                buffer.insert(fieldStart, paddingArray, 0, padLength);
             }
         }
     }
@@ -172,6 +216,8 @@ public final class FormattingInfo {
         sb.append(minLength);
         sb.append(", leftTruncate=");
         sb.append(leftTruncate);
+        sb.append(", zeroPad=");
+        sb.append(zeroPad);
         sb.append(']');
         return sb.toString();
     }

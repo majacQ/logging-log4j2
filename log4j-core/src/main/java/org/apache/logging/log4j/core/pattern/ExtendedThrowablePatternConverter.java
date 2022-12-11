@@ -18,9 +18,9 @@ package org.apache.logging.log4j.core.pattern;
 
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
-import org.apache.logging.log4j.util.Strings;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.Plugin;
 
 /**
  * Outputs the Throwable portion of the LoggingEvent as a full stack trace
@@ -30,12 +30,14 @@ import org.apache.logging.log4j.util.Strings;
  * The extended stack trace will also include the location of where the class was loaded from and the
  * version of the jar if available.
  */
-@Plugin(name = "ExtendedThrowablePatternConverter", category = PatternConverter.CATEGORY)
+@Namespace(PatternConverter.CATEGORY)
+@Plugin("ExtendedThrowablePatternConverter")
 @ConverterKeys({ "xEx", "xThrowable", "xException" })
 public final class ExtendedThrowablePatternConverter extends ThrowablePatternConverter {
 
     /**
      * Private constructor.
+     *
      * @param config
      * @param options options, may be null.
      */
@@ -67,26 +69,12 @@ public final class ExtendedThrowablePatternConverter extends ThrowablePatternCon
                 super.format(event, toAppendTo);
                 return;
             }
-            String suffix = getSuffix(event);
-            final String extStackTrace = proxy.getExtendedStackTraceAsString(options.getIgnorePackages(), options.getTextRenderer(), suffix);
             final int len = toAppendTo.length();
             if (len > 0 && !Character.isWhitespace(toAppendTo.charAt(len - 1))) {
                 toAppendTo.append(' ');
             }
-            if (!options.allLines() || !Strings.LINE_SEPARATOR.equals(options.getSeparator())) {
-                final StringBuilder sb = new StringBuilder();
-                final String[] array = extStackTrace.split(Strings.LINE_SEPARATOR);
-                final int limit = options.minLines(array.length) - 1;
-                for (int i = 0; i <= limit; ++i) {
-                    sb.append(array[i]);
-                    if (i < limit) {
-                        sb.append(options.getSeparator());
-                    }
-                }
-                toAppendTo.append(sb.toString());
-            } else {
-                toAppendTo.append(extStackTrace);
-            }
+            proxy.formatExtendedStackTraceTo(toAppendTo, options.getIgnorePackages(),
+                    options.getTextRenderer(), getSuffix(event), options.getSeparator());
         }
     }
 

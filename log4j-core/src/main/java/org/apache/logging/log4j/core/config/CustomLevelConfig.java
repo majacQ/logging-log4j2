@@ -16,19 +16,20 @@
  */
 package org.apache.logging.log4j.core.config;
 
-import java.util.Objects;
-
 import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.status.StatusLogger;
+
+import java.util.Objects;
 
 /**
  * Descriptor of a custom Level object that is created via configuration.
  */
-@Plugin(name = "CustomLevel", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin("CustomLevel")
 public final class CustomLevelConfig {
 
     private final String levelName;
@@ -42,7 +43,7 @@ public final class CustomLevelConfig {
     /**
      * Creates a CustomLevelConfig object. This also defines the Level object with a call to
      * {@link Level#forName(String, int)}.
-     * 
+     *
      * @param levelName name of the custom level.
      * @param intLevel the intLevel that determines where this level resides relative to the built-in levels
      * @return A CustomLevelConfig object.
@@ -50,7 +51,7 @@ public final class CustomLevelConfig {
     @PluginFactory
     public static CustomLevelConfig createLevel(// @formatter:off
             @PluginAttribute("name") final String levelName,
-            @PluginAttribute("intLevel") final int intLevel) {
+            @PluginAttribute final int intLevel) {
         // @formatter:on
 
         StatusLogger.getLogger().debug("Creating CustomLevel(name='{}', intValue={})", levelName, intLevel);
@@ -60,7 +61,7 @@ public final class CustomLevelConfig {
 
     /**
      * Returns the custom level name.
-     * 
+     *
      * @return the custom level name
      */
     public String getLevelName() {
@@ -70,7 +71,7 @@ public final class CustomLevelConfig {
     /**
      * Returns the custom level intLevel that determines the strength of the custom level relative to the built-in
      * levels.
-     * 
+     *
      * @return the custom level intLevel
      */
     public int getIntLevel() {

@@ -22,8 +22,13 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.Collection;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -32,7 +37,6 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LifeCycle;
-import org.apache.logging.log4j.core.LifeCycle2;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.ConfigurationFactoryData;
@@ -50,24 +54,27 @@ import org.apache.logging.log4j.core.util.Log4jThreadFactory;
  */
 public class RollingFileManager extends FileManager {
 
-    private static RollingFileManagerFactory factory = new RollingFileManagerFactory();
+    private static final RollingFileManagerFactory factory = new RollingFileManagerFactory();
     private static final int MAX_TRIES = 3;
     private static final int MIN_DURATION = 100;
+    private static final FileTime EPOCH = FileTime.fromMillis(0);
 
     protected long size;
     private long initialTime;
-    private final PatternProcessor patternProcessor;
+    private volatile PatternProcessor patternProcessor;
     private final Semaphore semaphore = new Semaphore(1);
     private final Log4jThreadFactory threadFactory = Log4jThreadFactory.createThreadFactory("RollingFileManager");
     private volatile TriggeringPolicy triggeringPolicy;
     private volatile RolloverStrategy rolloverStrategy;
-    private volatile boolean renameEmptyFiles = false;
-    private volatile boolean initialized = false;
+    private volatile boolean renameEmptyFiles;
+    private volatile boolean initialized;
     private volatile String fileName;
-    private FileExtension fileExtension;
+    private final boolean directWrite;
+    private final CopyOnWriteArrayList<RolloverListener> rolloverListeners = new CopyOnWriteArrayList<>();
+
     /* This executor pool will create a new Thread for every work async action to be performed. Using it allows
        us to make sure all the Threads are completed when the Manager is stopped. */
-    private ExecutorService asyncExecutor = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS,
+    private final ExecutorService asyncExecutor = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS,
             new EmptyQueue(), threadFactory);
 
     private static final AtomicReferenceFieldUpdater<RollingFileManager, TriggeringPolicy> triggeringPolicyUpdater =
@@ -76,47 +83,28 @@ public class RollingFileManager extends FileManager {
     private static final AtomicReferenceFieldUpdater<RollingFileManager, RolloverStrategy> rolloverStrategyUpdater =
             AtomicReferenceFieldUpdater.newUpdater(RollingFileManager.class, RolloverStrategy.class, "rolloverStrategy");
 
-    @Deprecated
-    protected RollingFileManager(final String fileName, final String pattern, final OutputStream os,
-            final boolean append, final long size, final long time, final TriggeringPolicy triggeringPolicy,
-            final RolloverStrategy rolloverStrategy, final String advertiseURI,
-            final Layout<? extends Serializable> layout, final int bufferSize, final boolean writeHeader) {
-        this(fileName, pattern, os, append, size, time, triggeringPolicy, rolloverStrategy, advertiseURI, layout,
-                writeHeader, ByteBuffer.wrap(new byte[Constants.ENCODER_BYTE_BUFFER_SIZE]));
-    }
-
-    @Deprecated
-    protected RollingFileManager(final String fileName, final String pattern, final OutputStream os,
-            final boolean append, final long size, final long time, final TriggeringPolicy triggeringPolicy,
-            final RolloverStrategy rolloverStrategy, final String advertiseURI,
-            final Layout<? extends Serializable> layout, final boolean writeHeader, final ByteBuffer buffer) {
-        super(fileName, os, append, false, advertiseURI, layout, writeHeader, buffer);
-        this.size = size;
-        this.initialTime = time;
-        this.triggeringPolicy = triggeringPolicy;
-        this.rolloverStrategy = rolloverStrategy;
-        this.patternProcessor = new PatternProcessor(pattern);
-        this.patternProcessor.setPrevFileTime(time);
-        this.fileName = fileName;
-        this.fileExtension = FileExtension.lookupForFile(pattern);
-    }
+    private static final AtomicReferenceFieldUpdater<RollingFileManager, PatternProcessor> patternProcessorUpdater =
+            AtomicReferenceFieldUpdater.newUpdater(RollingFileManager.class, PatternProcessor.class, "patternProcessor");
 
     /**
-     * @since 2.7
+     * @since 2.9
      */
     protected RollingFileManager(final LoggerContext loggerContext, final String fileName, final String pattern, final OutputStream os,
-            final boolean append, final boolean createOnDemand, final long size, final long time,
+            final boolean append, final boolean createOnDemand, final long size, final long initialTime,
             final TriggeringPolicy triggeringPolicy, final RolloverStrategy rolloverStrategy,
-            final String advertiseURI, final Layout<? extends Serializable> layout, final boolean writeHeader, final ByteBuffer buffer) {
-        super(loggerContext, fileName, os, append, false, createOnDemand, advertiseURI, layout, writeHeader, buffer);
+            final String advertiseURI, final Layout<? extends Serializable> layout,
+            final String filePermissions, final String fileOwner, final String fileGroup,
+            final boolean writeHeader, final ByteBuffer buffer) {
+        super(loggerContext, fileName != null ? fileName : pattern, os, append, false, createOnDemand,
+			advertiseURI, layout, filePermissions, fileOwner, fileGroup, writeHeader, buffer);
         this.size = size;
-        this.initialTime = time;
+        this.initialTime = initialTime;
         this.triggeringPolicy = triggeringPolicy;
         this.rolloverStrategy = rolloverStrategy;
         this.patternProcessor = new PatternProcessor(pattern);
-        this.patternProcessor.setPrevFileTime(time);
+        this.patternProcessor.setPrevFileTime(initialTime);
         this.fileName = fileName;
-        this.fileExtension = FileExtension.lookupForFile(pattern);
+        this.directWrite = rolloverStrategy instanceof DirectFileRolloverStrategy;
     }
 
     public void initialize() {
@@ -124,6 +112,16 @@ public class RollingFileManager extends FileManager {
         if (!initialized) {
             LOGGER.debug("Initializing triggering policy {}", triggeringPolicy);
             initialized = true;
+            // LOG4J2-2981 - set the file size before initializing the triggering policy.
+            if (directWrite) {
+                // LOG4J2-2485: Initialize size from the most recently written file.
+                final File file = new File(getFileName());
+                if (file.exists()) {
+                    size = file.length();
+                } else {
+                    ((DirectFileRolloverStrategy) rolloverStrategy).clearCurrentFileName();
+                }
+            }
             triggeringPolicy.initialize(this);
             if (triggeringPolicy instanceof LifeCycle) {
                 ((LifeCycle) triggeringPolicy).start();
@@ -144,16 +142,43 @@ public class RollingFileManager extends FileManager {
      * @param bufferSize buffer size to use if bufferedIO is true
      * @param immediateFlush flush on every write or not
      * @param createOnDemand true if you want to lazy-create the file (a.k.a. on-demand.)
+     * @param filePermissions File permissions
+     * @param fileOwner File owner
+     * @param fileGroup File group
      * @param configuration The configuration.
      * @return A RollingFileManager.
      */
     public static RollingFileManager getFileManager(final String fileName, final String pattern, final boolean append,
             final boolean bufferedIO, final TriggeringPolicy policy, final RolloverStrategy strategy,
             final String advertiseURI, final Layout<? extends Serializable> layout, final int bufferSize,
-            final boolean immediateFlush, final boolean createOnDemand, final Configuration configuration) {
-        String name = fileName == null ? pattern : fileName;
-        return (RollingFileManager) getManager(name, new FactoryData(fileName, pattern, append,
-            bufferedIO, policy, strategy, advertiseURI, layout, bufferSize, immediateFlush, createOnDemand, configuration), factory);
+            final boolean immediateFlush, final boolean createOnDemand,
+            final String filePermissions, final String fileOwner, final String fileGroup,
+            final Configuration configuration) {
+
+        if (strategy instanceof DirectWriteRolloverStrategy && fileName != null) {
+            LOGGER.error("The fileName attribute must not be specified with the DirectWriteRolloverStrategy");
+            return null;
+        }
+        final String name = fileName == null ? pattern : fileName;
+        return narrow(RollingFileManager.class, getManager(name, new FactoryData(fileName, pattern, append,
+            bufferedIO, policy, strategy, advertiseURI, layout, bufferSize, immediateFlush, createOnDemand,
+            filePermissions, fileOwner, fileGroup, configuration), factory));
+    }
+
+    /**
+     * Add a RolloverListener.
+     * @param listener The RolloverListener.
+     */
+    public void addRolloverListener(final RolloverListener listener) {
+        rolloverListeners.add(listener);
+    }
+
+    /**
+     * Remove a RolloverListener.
+     * @param listener The RolloverListener.
+     */
+    public void removeRolloverListener(final RolloverListener listener) {
+        rolloverListeners.remove(listener);
     }
 
     /**
@@ -162,14 +187,25 @@ public class RollingFileManager extends FileManager {
      */
     @Override
     public String getFileName() {
-        if (rolloverStrategy instanceof DirectFileRolloverStrategy) {
+        if (directWrite) {
             fileName = ((DirectFileRolloverStrategy) rolloverStrategy).getCurrentFileName(this);
         }
         return fileName;
     }
 
+    @Override
+    protected void createParentDir(final File file) {
+        if (directWrite) {
+            file.getParentFile().mkdirs();
+        }
+    }
+
+    public boolean isDirectWrite() {
+        return directWrite;
+    }
+
     public FileExtension getFileExtension() {
-        return fileExtension;
+        return patternProcessor.getFileExtension();
     }
 
     // override to make visible for unit tests
@@ -221,20 +257,15 @@ public class RollingFileManager extends FileManager {
 
     @Override
     public boolean releaseSub(final long timeout, final TimeUnit timeUnit) {
-        LOGGER.debug("Shutting down RollingFileManager {}" + getName());
+        LOGGER.debug("Shutting down RollingFileManager {}", getName());
         boolean stopped = true;
-        if (triggeringPolicy instanceof LifeCycle2) {
-            stopped &= ((LifeCycle2) triggeringPolicy).stop(timeout, timeUnit);
-        } else if (triggeringPolicy instanceof LifeCycle) {
-            ((LifeCycle) triggeringPolicy).stop();
-            stopped &= true;
-        }
-        boolean status = super.releaseSub(timeout, timeUnit) && stopped;
+        stopped &= ((LifeCycle) triggeringPolicy).stop(timeout, timeUnit);
+        final boolean status = super.releaseSub(timeout, timeUnit) && stopped;
         asyncExecutor.shutdown();
         try {
             // Allow at least the minimum interval to pass so async actions can complete.
-            long millis = timeUnit.toMillis(timeout);
-            long waitInterval = MIN_DURATION < millis ? millis : MIN_DURATION;
+            final long millis = timeUnit.toMillis(timeout);
+            final long waitInterval = MIN_DURATION < millis ? millis : MIN_DURATION;
 
             for (int count = 1; count <= MAX_TRIES && !asyncExecutor.isTerminated(); ++count) {
                 asyncExecutor.awaitTermination(waitInterval * count, TimeUnit.MILLISECONDS);
@@ -271,17 +302,57 @@ public class RollingFileManager extends FileManager {
         return status;
     }
 
+	public synchronized void rollover(final long prevFileTime, final long prevRollTime) {
+        LOGGER.debug("Rollover PrevFileTime: {}, PrevRollTime: {}", prevFileTime, prevRollTime);
+		getPatternProcessor().setPrevFileTime(prevFileTime);
+		getPatternProcessor().setCurrentFileTime(prevRollTime);
+		rollover();
+	}
+
     public synchronized void rollover() {
-        if (!hasOutputStream()) {
+        if (!hasOutputStream() && !isCreateOnDemand() && !isDirectWrite()) {
             return;
         }
-        if (rollover(rolloverStrategy)) {
-            try {
-                size = 0;
-                initialTime = System.currentTimeMillis();
-                createFileAfterRollover();
-            } catch (final IOException e) {
-                logError("Failed to create file after rollover", e);
+        final String currentFileName = fileName;
+        if (rolloverListeners.size() > 0) {
+            for (final RolloverListener listener : rolloverListeners) {
+                try {
+                    listener.rolloverTriggered(currentFileName);
+                } catch (final Exception ex) {
+                    LOGGER.warn("Rollover Listener {} failed with {}: {}", listener.getClass().getSimpleName(),
+                            ex.getClass().getName(), ex.getMessage());
+                }
+            }
+        }
+
+        boolean interrupted = Thread.interrupted(); // clear interrupted state
+        try {
+            if (interrupted) {
+                LOGGER.warn("RollingFileManager cleared thread interrupted state, continue to rollover");
+            }
+
+            if (rollover(rolloverStrategy)) {
+                try {
+                    size = 0;
+                    initialTime = System.currentTimeMillis();
+                    createFileAfterRollover();
+                } catch (final IOException e) {
+                    logError("Failed to create file after rollover", e);
+                }
+            }
+        } finally {
+            if (interrupted) { // restore interrupted state
+                Thread.currentThread().interrupt();
+            }
+        }
+        if (rolloverListeners.size() > 0) {
+            for (final RolloverListener listener : rolloverListeners) {
+                try {
+                    listener.rolloverComplete(currentFileName);
+                } catch (final Exception ex) {
+                    LOGGER.warn("Rollover Listener {} failed with {}: {}", listener.getClass().getSimpleName(),
+                            ex.getClass().getName(), ex.getMessage());
+                }
             }
         }
     }
@@ -300,7 +371,7 @@ public class RollingFileManager extends FileManager {
 
     public void setTriggeringPolicy(final TriggeringPolicy triggeringPolicy) {
         triggeringPolicy.initialize(this);
-        TriggeringPolicy policy = this.triggeringPolicy;
+        final TriggeringPolicy policy = this.triggeringPolicy;
         int count = 0;
         boolean policyUpdated = false;
         do {
@@ -323,6 +394,10 @@ public class RollingFileManager extends FileManager {
 
     public void setRolloverStrategy(final RolloverStrategy rolloverStrategy) {
         rolloverStrategyUpdater.compareAndSet(this, this.rolloverStrategy, rolloverStrategy);
+    }
+
+    public void setPatternProcessor(final PatternProcessor patternProcessor) {
+        patternProcessorUpdater.compareAndSet(this, this.patternProcessor, patternProcessor);
     }
 
     /**
@@ -474,6 +549,9 @@ public class RollingFileManager extends FileManager {
         private final RolloverStrategy strategy;
         private final String advertiseURI;
         private final Layout<? extends Serializable> layout;
+        private final String filePermissions;
+        private final String fileOwner;
+        private final String fileGroup;
 
         /**
          * Creates the data for the factory.
@@ -485,12 +563,16 @@ public class RollingFileManager extends FileManager {
          * @param bufferSize the buffer size
          * @param immediateFlush flush on every write or not
          * @param createOnDemand true if you want to lazy-create the file (a.k.a. on-demand.)
+         * @param filePermissions File permissions
+         * @param fileOwner File owner
+         * @param fileGroup File group
          * @param configuration The configuration
          */
         public FactoryData(final String fileName, final String pattern, final boolean append, final boolean bufferedIO,
                 final TriggeringPolicy policy, final RolloverStrategy strategy, final String advertiseURI,
                 final Layout<? extends Serializable> layout, final int bufferSize, final boolean immediateFlush,
-                final boolean createOnDemand, final Configuration configuration) {
+                final boolean createOnDemand, final String filePermissions, final String fileOwner, final String fileGroup,
+                final Configuration configuration) {
             super(configuration);
             this.fileName = fileName;
             this.pattern = pattern;
@@ -503,16 +585,21 @@ public class RollingFileManager extends FileManager {
             this.layout = layout;
             this.immediateFlush = immediateFlush;
             this.createOnDemand = createOnDemand;
+            this.filePermissions = filePermissions;
+            this.fileOwner = fileOwner;
+            this.fileGroup = fileGroup;
         }
 
-        public TriggeringPolicy getTriggeringPolicy()
-        {
+        public TriggeringPolicy getTriggeringPolicy() {
             return this.policy;
         }
 
-        public RolloverStrategy getRolloverStrategy()
-        {
+        public RolloverStrategy getRolloverStrategy() {
             return this.strategy;
+        }
+
+        public String getPattern() {
+            return pattern;
         }
 
         @Override
@@ -535,16 +622,26 @@ public class RollingFileManager extends FileManager {
             builder.append(advertiseURI);
             builder.append(", layout=");
             builder.append(layout);
+            builder.append(", filePermissions=");
+            builder.append(filePermissions);
+            builder.append(", fileOwner=");
+            builder.append(fileOwner);
             builder.append("]");
             return builder.toString();
         }
     }
 
+    /**
+     * Updates the RollingFileManager's data during a reconfiguration. This method should be considered private.
+     * It is not thread safe and calling it outside of a reconfiguration may lead to errors. This method may be
+     * made protected in a future release.
+     * @param data The data to update.
+     */
     @Override
-    public void updateData(final Object data)
-    {
+    public void updateData(final Object data) {
         final FactoryData factoryData = (FactoryData) data;
         setRolloverStrategy(factoryData.getRolloverStrategy());
+        setPatternProcessor(new PatternProcessor(factoryData.getPattern(), getPatternProcessor()));
         setTriggeringPolicy(factoryData.getTriggeringPolicy());
     }
 
@@ -562,16 +659,13 @@ public class RollingFileManager extends FileManager {
         @Override
         public RollingFileManager createManager(final String name, final FactoryData data) {
             long size = 0;
-            boolean writeHeader = !data.append;
             File file = null;
             if (data.fileName != null) {
                 file = new File(data.fileName);
-                // LOG4J2-1140: check writeHeader before creating the file
-                writeHeader = !data.append || !file.exists();
 
                 try {
                     FileUtils.makeParentDirs(file);
-                    final boolean created = data.createOnDemand ? false : file.createNewFile();
+                    final boolean created = !data.createOnDemand && file.createNewFile();
                     LOGGER.trace("New file '{}' created = {}", name, created);
                 } catch (final IOException ioe) {
                     LOGGER.error("Unable to create file " + name, ioe);
@@ -585,12 +679,18 @@ public class RollingFileManager extends FileManager {
                 final ByteBuffer buffer = ByteBuffer.wrap(new byte[actualSize]);
                 final OutputStream os = data.createOnDemand  || data.fileName == null ? null :
                         new FileOutputStream(data.fileName, data.append);
-                final long time = data.createOnDemand || file == null ?
-                        System.currentTimeMillis() : file.lastModified(); // LOG4J2-531 create file first so time has valid value
+                // LOG4J2-531 create file first so time has valid value.
+                final long initialTime = file == null || !file.exists() ? 0 : initialFileTime(file);
+                final boolean writeHeader = file != null && file.exists() && file.length() == 0;
 
-                return new RollingFileManager(data.getLoggerContext(), data.fileName, data.pattern, os,
-                        data.append, data.createOnDemand, size, time, data.policy, data.strategy, data.advertiseURI,
-                        data.layout, writeHeader, buffer);
+                final RollingFileManager rm = new RollingFileManager(data.getLoggerContext(), data.fileName, data.pattern, os,
+                    data.append, data.createOnDemand, size, initialTime, data.policy, data.strategy, data.advertiseURI,
+                    data.layout, data.filePermissions, data.fileOwner, data.fileGroup, writeHeader, buffer);
+                if (os != null && rm.isAttributeViewEnabled()) {
+                    rm.defineAttributeView(file.toPath());
+                }
+
+                return rm;
             } catch (final IOException ex) {
                 LOGGER.error("RollingFileManager (" + name + ") " + ex, ex);
             }
@@ -598,7 +698,29 @@ public class RollingFileManager extends FileManager {
         }
     }
 
+    private static long initialFileTime(final File file) {
+        final Path path = file.toPath();
+        if (Files.exists(path)) {
+            try {
+                final BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
+                final FileTime fileTime = attrs.creationTime();
+                if (fileTime.compareTo(EPOCH) > 0) {
+                    return fileTime.toMillis();
+                }
+                LOGGER.info("Unable to obtain file creation time for " + file.getAbsolutePath());
+            } catch (final Exception ex) {
+                LOGGER.info("Unable to calculate file creation time for " + file.getAbsolutePath() + ": " + ex.getMessage());
+            }
+        }
+        return file.lastModified();
+    }
+
     private static class EmptyQueue extends ArrayBlockingQueue<Runnable> {
+
+        /**
+         *
+         */
+        private static final long serialVersionUID = 1L;
 
         EmptyQueue() {
             super(1);
@@ -610,24 +732,24 @@ public class RollingFileManager extends FileManager {
         }
 
         @Override
-        public boolean add(Runnable runnable) {
+        public boolean add(final Runnable runnable) {
             throw new IllegalStateException("Queue is full");
         }
 
         @Override
-        public void put(Runnable runnable) throws InterruptedException {
+        public void put(final Runnable runnable) throws InterruptedException {
             /* No point in going into a permanent wait */
             throw new InterruptedException("Unable to insert into queue");
         }
 
         @Override
-        public boolean offer(Runnable runnable, long timeout, TimeUnit timeUnit) throws InterruptedException {
+        public boolean offer(final Runnable runnable, final long timeout, final TimeUnit timeUnit) throws InterruptedException {
             Thread.sleep(timeUnit.toMillis(timeout));
             return false;
         }
 
         @Override
-        public boolean addAll(Collection<? extends Runnable> collection) {
+        public boolean addAll(final Collection<? extends Runnable> collection) {
             if (collection.size() > 0) {
                 throw new IllegalArgumentException("Too many items in collection");
             }

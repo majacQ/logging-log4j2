@@ -17,6 +17,7 @@
 package org.apache.logging.log4j.core.net.ssl;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 import org.apache.logging.log4j.status.StatusLogger;
 
@@ -27,11 +28,19 @@ public class StoreConfiguration<T> {
     protected static final StatusLogger LOGGER = StatusLogger.getLogger();
 
     private String location;
-    private char[] password;
+    private PasswordProvider passwordProvider;
 
-    public StoreConfiguration(final String location, final String password) {
+    public StoreConfiguration(final String location, final PasswordProvider passwordProvider) {
         this.location = location;
-        this.password = password == null ? null : password.toCharArray();
+        this.passwordProvider = Objects.requireNonNull(passwordProvider, "passwordProvider");
+    }
+
+    /**
+     * Clears the secret fields in this object.
+     */
+    public void clearSecrets() {
+        this.location = null;
+        this.passwordProvider = null;
     }
 
     public String getLocation() {
@@ -42,20 +51,16 @@ public class StoreConfiguration<T> {
         this.location = location;
     }
 
-    public String getPassword() {
-        return String.valueOf(this.password);
+    public char[] getPassword() {
+        return this.passwordProvider.getPassword();
     }
 
-    public char[] getPasswordAsCharArray() {
-        return this.password;
-    }
-
-    public void setPassword(final String password) {
-        this.password = password == null ? null : password.toCharArray();
+    public void setPassword(final char[] password) {
+        this.passwordProvider = new MemoryPasswordProvider(password);
     }
 
     /**
-     * @throws StoreConfigurationException May be thrown by subclasses 
+     * @throws StoreConfigurationException May be thrown by subclasses
      */
     protected T load() throws StoreConfigurationException {
         return null;
@@ -66,26 +71,32 @@ public class StoreConfiguration<T> {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((location == null) ? 0 : location.hashCode());
-        result = prime * result + Arrays.hashCode(password);
+        result = prime * result + Arrays.hashCode(passwordProvider.getPassword());
         return result;
     }
 
     @Override
-    public boolean equals(Object obj) {
-        if (this == obj)
+    public boolean equals(final Object obj) {
+        if (this == obj) {
             return true;
-        if (obj == null)
+        }
+        if (obj == null) {
             return false;
-        if (getClass() != obj.getClass())
+        }
+        if (getClass() != obj.getClass()) {
             return false;
-        StoreConfiguration other = (StoreConfiguration) obj;
+        }
+        final StoreConfiguration<?> other = (StoreConfiguration<?>) obj;
         if (location == null) {
-            if (other.location != null)
+            if (other.location != null) {
                 return false;
-        } else if (!location.equals(other.location))
+            }
+        } else if (!location.equals(other.location)) {
             return false;
-        if (!Arrays.equals(password, other.password))
+        }
+        if (!Arrays.equals(passwordProvider.getPassword(), other.passwordProvider.getPassword())) {
             return false;
+        }
         return true;
-    }    
+    }
 }

@@ -25,25 +25,23 @@ import java.util.Objects;
 import org.apache.logging.log4j.util.BiConsumer;
 import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.util.StringMap;
+import org.apache.logging.log4j.util.Strings;
 import org.apache.logging.log4j.util.TriConsumer;
 
 /**
  * Provides a read-only {@code StringMap} view of a {@code Map<String, String>}.
  */
-class JdkMapAdapterStringMap implements StringMap {
+public class JdkMapAdapterStringMap implements StringMap {
     private static final long serialVersionUID = -7348247784983193612L;
     private static final String FROZEN = "Frozen collection cannot be modified";
-    private static final Comparator<? super String> NULL_FIRST_COMPARATOR = new Comparator<String>() {
-        @Override
-        public int compare(final String left, final String right) {
-            if (left == null) {
-                return -1;
-            }
-            if (right == null) {
-                return 1;
-            }
-            return left.compareTo(right);
+    private static final Comparator<? super String> NULL_FIRST_COMPARATOR = (Comparator<String>) (left, right) -> {
+        if (left == null) {
+            return -1;
         }
+        if (right == null) {
+            return 1;
+        }
+        return left.compareTo(right);
     };
 
     private final Map<String, String> map;
@@ -94,7 +92,7 @@ class JdkMapAdapterStringMap implements StringMap {
 
     private String[] getSortedKeys() {
         if (sortedKeys == null) {
-            sortedKeys = map.keySet().toArray(new String[map.size()]);
+            sortedKeys = map.keySet().toArray(Strings.EMPTY_ARRAY);
             Arrays.sort(sortedKeys, NULL_FIRST_COMPARATOR);
         }
         return sortedKeys;
@@ -143,12 +141,7 @@ class JdkMapAdapterStringMap implements StringMap {
         sortedKeys = null;
     }
 
-    private static TriConsumer<String, String, Map<String, String>> PUT_ALL = new TriConsumer<String, String, Map<String, String>>() {
-        @Override
-        public void accept(final String key, final String value, final Map<String, String> stringStringMap) {
-            stringStringMap.put(key, value);
-        }
-    };
+    private static final TriConsumer<String, String, Map<String, String>> PUT_ALL = (key, value, stringStringMap) -> stringStringMap.put(key, value);
 
     @Override
     public void putValue(final String key, final Object value) {

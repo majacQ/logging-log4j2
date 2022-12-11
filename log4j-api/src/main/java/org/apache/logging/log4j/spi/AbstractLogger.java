@@ -16,28 +16,31 @@
  */
 package org.apache.logging.log4j.spi;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 
 import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogBuilder;
+import org.apache.logging.log4j.LoggingException;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
-import org.apache.logging.log4j.message.DefaultFlowMessageFactory;
+import org.apache.logging.log4j.internal.DefaultLogBuilder;
 import org.apache.logging.log4j.message.EntryMessage;
 import org.apache.logging.log4j.message.FlowMessageFactory;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.MessageFactory;
-import org.apache.logging.log4j.message.MessageFactory2;
 import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.logging.log4j.message.ParameterizedMessageFactory;
 import org.apache.logging.log4j.message.ReusableMessageFactory;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.apache.logging.log4j.message.StringFormattedMessage;
 import org.apache.logging.log4j.status.StatusLogger;
 import org.apache.logging.log4j.util.Constants;
 import org.apache.logging.log4j.util.LambdaUtil;
-import org.apache.logging.log4j.util.LoaderUtil;
 import org.apache.logging.log4j.util.MessageSupplier;
-import org.apache.logging.log4j.util.PropertiesUtil;
+import org.apache.logging.log4j.util.PerformanceSensitive;
+import org.apache.logging.log4j.util.StackLocatorUtil;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.logging.log4j.util.Supplier;
 
@@ -45,6 +48,10 @@ import org.apache.logging.log4j.util.Supplier;
  * Base implementation of a Logger. It is highly recommended that any Logger implementation extend this class.
  */
 public abstract class AbstractLogger implements ExtendedLogger, Serializable {
+    // Implementation note: many methods in this class are tuned for performance. MODIFY WITH CARE!
+    // Specifically, try to keep the hot methods to 35 bytecodes or less:
+    // this is within the MaxInlineSize threshold on Java 7 and Java 8 Hotspot and makes these methods
+    // candidates for immediate inlining instead of waiting until they are designated "hot enough".
 
     /**
      * Marker for flow tracing.
@@ -76,19 +83,6 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      */
     public static final Marker CATCHING_MARKER = MarkerManager.getMarker("CATCHING").setParents(EXCEPTION_MARKER);
 
-    /**
-     * The default MessageFactory class.
-     */
-    public static final Class<? extends MessageFactory> DEFAULT_MESSAGE_FACTORY_CLASS =
-            createClassForProperty("log4j2.messageFactory", ReusableMessageFactory.class,
-                    ParameterizedMessageFactory.class);
-
-    /**
-     * The default FlowMessageFactory class.
-     */
-    public static final Class<? extends FlowMessageFactory> DEFAULT_FLOW_MESSAGE_FACTORY_CLASS =
-            createFlowClassForProperty("log4j2.flowMessageFactory", DefaultFlowMessageFactory.class);
-
     private static final long serialVersionUID = 2L;
 
     private static final String FQCN = AbstractLogger.class.getName();
@@ -96,16 +90,21 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
     private static final String CATCHING = "Catching";
 
     protected final String name;
-    private final MessageFactory2 messageFactory;
+    private final MessageFactory messageFactory;
     private final FlowMessageFactory flowMessageFactory;
+    private static final ThreadLocal<int[]> recursionDepthHolder = new ThreadLocal<>(); // LOG4J2-1518, LOG4J2-2031
+    protected final transient ThreadLocal<DefaultLogBuilder> logBuilder;
+
 
     /**
      * Creates a new logger named after this class (or subclass).
      */
     public AbstractLogger() {
-        this.name = getClass().getName();
-        this.messageFactory = createDefaultMessageFactory();
-        this.flowMessageFactory = createDefaultFlowMessageFactory();
+        final String canonicalName = getClass().getCanonicalName();
+        this.name = canonicalName != null ? canonicalName : getClass().getName();
+        this.messageFactory = LoggingSystem.getMessageFactory();
+        this.flowMessageFactory = LoggingSystem.getFlowMessageFactory();
+        this.logBuilder = new LocalLogBuilder(this);
     }
 
     /**
@@ -114,7 +113,7 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      * @param name the logger name
      */
     public AbstractLogger(final String name) {
-        this(name, createDefaultMessageFactory());
+        this(name, LoggingSystem.getMessageFactory());
     }
 
     /**
@@ -125,14 +124,15 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      */
     public AbstractLogger(final String name, final MessageFactory messageFactory) {
         this.name = name;
-        this.messageFactory = messageFactory == null ? createDefaultMessageFactory() : narrow(messageFactory);
-        this.flowMessageFactory = createDefaultFlowMessageFactory();
+        this.messageFactory = messageFactory == null ? LoggingSystem.getMessageFactory() : messageFactory;
+        this.flowMessageFactory = LoggingSystem.getFlowMessageFactory();
+        this.logBuilder = new LocalLogBuilder(this);
     }
 
     /**
      * Checks that the message factory a logger was created with is the same as the given messageFactory. If they are
      * different log a warning to the {@linkplain StatusLogger}. A null MessageFactory translates to the default
-     * MessageFactory {@link #DEFAULT_MESSAGE_FACTORY_CLASS}.
+     * MessageFactory {@link LoggingSystem#getMessageFactory()}.
      *
      * @param logger The logger to check
      * @param messageFactory The message factory to check.
@@ -140,18 +140,19 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
     public static void checkMessageFactory(final ExtendedLogger logger, final MessageFactory messageFactory) {
         final String name = logger.getName();
         final MessageFactory loggerMessageFactory = logger.getMessageFactory();
+        final MessageFactory currentMessageFactory = LoggingSystem.getMessageFactory();
         if (messageFactory != null && !loggerMessageFactory.equals(messageFactory)) {
             StatusLogger.getLogger().warn(
                     "The Logger {} was created with the message factory {} and is now requested with the "
                             + "message factory {}, which may create log events with unexpected formatting.", name,
                     loggerMessageFactory, messageFactory);
-        } else if (messageFactory == null && !loggerMessageFactory.getClass().equals(DEFAULT_MESSAGE_FACTORY_CLASS)) {
+        } else if (messageFactory == null && loggerMessageFactory != currentMessageFactory) {
             StatusLogger
                     .getLogger()
                     .warn("The Logger {} was created with the message factory {} and is now requested with a null "
                             + "message factory (defaults to {}), which may create log events with unexpected "
                             + "formatting.",
-                            name, loggerMessageFactory, DEFAULT_MESSAGE_FACTORY_CLASS.getName());
+                            name, loggerMessageFactory, currentMessageFactory.getClass().getName());
         }
     }
 
@@ -182,53 +183,6 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
 
     protected Message catchingMsg(final Throwable t) {
         return messageFactory.newMessage(CATCHING);
-    }
-
-    private static Class<? extends MessageFactory> createClassForProperty(final String property,
-            final Class<ReusableMessageFactory> reusableParameterizedMessageFactoryClass,
-            final Class<ParameterizedMessageFactory> parameterizedMessageFactoryClass) {
-        try {
-            final String fallback = Constants.ENABLE_THREADLOCALS ? reusableParameterizedMessageFactoryClass.getName()
-                    : parameterizedMessageFactoryClass.getName();
-            final String clsName = PropertiesUtil.getProperties().getStringProperty(property, fallback);
-            return LoaderUtil.loadClass(clsName).asSubclass(MessageFactory.class);
-        } catch (final Throwable t) {
-            return parameterizedMessageFactoryClass;
-        }
-    }
-
-    private static Class<? extends FlowMessageFactory> createFlowClassForProperty(final String property,
-            final Class<DefaultFlowMessageFactory> defaultFlowMessageFactoryClass) {
-        try {
-            final String clsName = PropertiesUtil.getProperties().getStringProperty(property, defaultFlowMessageFactoryClass.getName());
-            return LoaderUtil.loadClass(clsName).asSubclass(FlowMessageFactory.class);
-        } catch (final Throwable t) {
-            return defaultFlowMessageFactoryClass;
-        }
-    }
-
-    private static MessageFactory2 createDefaultMessageFactory() {
-        try {
-            final MessageFactory result = DEFAULT_MESSAGE_FACTORY_CLASS.newInstance();
-            return narrow(result);
-        } catch (final InstantiationException | IllegalAccessException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private static MessageFactory2 narrow(final MessageFactory result) {
-        if (result instanceof MessageFactory2) {
-            return (MessageFactory2) result;
-        }
-        return new MessageFactory2Adapter(result);
-    }
-
-    private static FlowMessageFactory createDefaultFlowMessageFactory() {
-        try {
-            return DEFAULT_FLOW_MESSAGE_FACTORY_CLASS.newInstance();
-        } catch (final InstantiationException | IllegalAccessException e) {
-            throw new IllegalStateException(e);
-        }
     }
 
     @Override
@@ -497,6 +451,7 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      * @param fqcn The fully qualified class name of the <b>caller</b>.
      * @param format Format String for the parameters.
      * @param paramSuppliers The Suppliers of the parameters.
+     * @return The EntryMessage.
      */
     protected EntryMessage enter(final String fqcn, final String format, final Supplier<?>... paramSuppliers) {
         EntryMessage entryMsg = null;
@@ -511,23 +466,8 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      *
      * @param fqcn The fully qualified class name of the <b>caller</b>.
      * @param format The format String for the parameters.
-     * @param paramSuppliers The parameters to the method.
-     */
-    @Deprecated
-    protected EntryMessage enter(final String fqcn, final String format, final MessageSupplier... paramSuppliers) {
-        EntryMessage entryMsg = null;
-        if (isEnabled(Level.TRACE, ENTRY_MARKER, (Object) null, null)) {
-            logMessageSafely(fqcn, Level.TRACE, ENTRY_MARKER, entryMsg = entryMsg(format, paramSuppliers), null);
-        }
-        return entryMsg;
-    }
-
-    /**
-     * Logs entry to a method with location information.
-     *
-     * @param fqcn The fully qualified class name of the <b>caller</b>.
-     * @param format The format String for the parameters.
      * @param params The parameters to the method.
+     * @return The EntryMessage.
      */
     protected EntryMessage enter(final String fqcn, final String format, final Object... params) {
         EntryMessage entryMsg = null;
@@ -541,25 +481,8 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      * Logs entry to a method with location information.
      *
      * @param fqcn The fully qualified class name of the <b>caller</b>.
-     * @param msgSupplier The Supplier of the Message.
-     */
-    @Deprecated
-    protected EntryMessage enter(final String fqcn, final MessageSupplier msgSupplier) {
-        EntryMessage message = null;
-        if (isEnabled(Level.TRACE, ENTRY_MARKER, (Object) null, null)) {
-            logMessageSafely(fqcn, Level.TRACE, ENTRY_MARKER, message = flowMessageFactory.newEntryMessage(
-                    msgSupplier.get()), null);
-        }
-        return message;
-    }
-
-    /**
-     * Logs entry to a method with location information.
-     *
-     * @param fqcn
-     *            The fully qualified class name of the <b>caller</b>.
-     * @param message
-     *            the Message.
+     * @param message the Message.
+     * @return The EntryMessage.
      * @since 2.6
      */
     protected EntryMessage enter(final String fqcn, final Message message) {
@@ -569,16 +492,6 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
                     null);
         }
         return flowMessage;
-    }
-
-    @Override
-    public void entry() {
-        entry(FQCN, (Object[]) null);
-    }
-
-    @Override
-    public void entry(final Object... params) {
-        entry(FQCN, params);
     }
 
     /**
@@ -900,16 +813,6 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
         logIfEnabled(FQCN, Level.ERROR, null, message, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
     }
 
-    @Override
-    public void exit() {
-        exit(FQCN, (Object) null);
-    }
-
-    @Override
-    public <R> R exit(final R result) {
-        return exit(FQCN, result);
-    }
-
     /**
      * Logs exiting from a method with the result and location information.
      *
@@ -919,7 +822,9 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      * @return the return value passed to this method.
      */
     protected <R> R exit(final String fqcn, final R result) {
-        logIfEnabled(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(null, result), null);
+        if (isEnabled(Level.TRACE, EXIT_MARKER, (CharSequence) null, null)) {
+            logMessageSafely(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(null, result), null);
+        }
         return result;
     }
 
@@ -927,12 +832,15 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      * Logs exiting from a method with the result and location information.
      *
      * @param fqcn The fully qualified class name of the <b>caller</b>.
+     * @param format The format string.
      * @param <R> The type of the parameter and object being returned.
      * @param result The result being returned from the method call.
      * @return the return value passed to this method.
      */
     protected <R> R exit(final String fqcn, final String format, final R result) {
-        logIfEnabled(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(format, result), null);
+        if (isEnabled(Level.TRACE, EXIT_MARKER, (CharSequence) null, null)) {
+            logMessageSafely(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(format, result), null);
+        }
         return result;
     }
 
@@ -2069,6 +1977,24 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
         logMessageSafely(fqcn, level, marker, msg, msg.getThrowable());
     }
 
+    public void logMessage(final Level level, final Marker marker, final String fqcn, final StackTraceElement location,
+            final Message message, final Throwable throwable) {
+        try {
+            incrementRecursionDepth();
+            log(level, marker, fqcn, location, message, throwable);
+        } catch (Throwable ex) {
+            handleLogMessageException(ex, fqcn, message);
+        } finally {
+            decrementRecursionDepth();
+            ReusableMessageFactory.release(message);
+        }
+    }
+
+    protected void log(final Level level, final Marker marker, final String fqcn, final StackTraceElement location,
+            final Message message, final Throwable throwable) {
+        logMessage(fqcn, level, marker, message, throwable);
+    }
+
     @Override
     public void printf(final Level level, final Marker marker, final String format, final Object... params) {
         if (isEnabled(level, marker, format, params)) {
@@ -2085,14 +2011,101 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
         }
     }
 
+    @PerformanceSensitive
+    // NOTE: This is a hot method. Current implementation compiles to 30 bytes of byte code.
+    // This is within the 35 byte MaxInlineSize threshold. Modify with care!
     private void logMessageSafely(final String fqcn, final Level level, final Marker marker, final Message msg,
             final Throwable throwable) {
         try {
-            logMessage(fqcn, level, marker, msg, throwable);
+            logMessageTrackRecursion(fqcn, level, marker, msg, throwable);
         } finally {
             // LOG4J2-1583 prevent scrambled logs when logging calls are nested (logging in toString())
             ReusableMessageFactory.release(msg);
         }
+    }
+
+    @PerformanceSensitive
+    // NOTE: This is a hot method. Current implementation compiles to 33 bytes of byte code.
+    // This is within the 35 byte MaxInlineSize threshold. Modify with care!
+    private void logMessageTrackRecursion(final String fqcn,
+                                          final Level level,
+                                          final Marker marker,
+                                          final Message msg,
+                                          final Throwable throwable) {
+        try {
+            incrementRecursionDepth(); // LOG4J2-1518, LOG4J2-2031
+            tryLogMessage(fqcn, getLocation(fqcn), level, marker, msg, throwable);
+        } finally {
+            decrementRecursionDepth();
+        }
+    }
+
+    private static int[] getRecursionDepthHolder() {
+        int[] result = recursionDepthHolder.get();
+        if (result == null) {
+            result = new int[1];
+            recursionDepthHolder.set(result);
+        }
+        return result;
+    }
+
+    private static void incrementRecursionDepth() {
+        getRecursionDepthHolder()[0]++;
+    }
+
+    private static void decrementRecursionDepth() {
+        int newDepth = --getRecursionDepthHolder()[0];
+        if (newDepth < 0) {
+            throw new IllegalStateException("Recursion depth became negative: " + newDepth);
+        }
+    }
+
+    /**
+     * Returns the depth of nested logging calls in the current Thread: zero if no logging call has been made,
+     * one if a single logging call without nested logging calls has been made, or more depending on the level of
+     * nesting.
+     * @return the depth of the nested logging calls in the current Thread
+     */
+    public static int getRecursionDepth() {
+        return getRecursionDepthHolder()[0];
+    }
+
+    @PerformanceSensitive
+    // NOTE: This is a hot method. Current implementation compiles to 27 bytes of byte code.
+    // This is within the 35 byte MaxInlineSize threshold. Modify with care!
+    private void tryLogMessage(final String fqcn,
+                               final StackTraceElement location,
+                               final Level level,
+                               final Marker marker,
+                               final Message message,
+                               final Throwable throwable) {
+        try {
+            log(level, marker, fqcn, location, message, throwable);
+        } catch (final Throwable t) {
+            // LOG4J2-1990 Log4j2 suppresses all exceptions that occur once application called the logger
+            handleLogMessageException(t, fqcn, message);
+        }
+    }
+
+    @PerformanceSensitive
+    // NOTE: This is a hot method. Current implementation compiles to 15 bytes of byte code.
+    // This is within the 35 byte MaxInlineSize threshold. Modify with care!
+    private StackTraceElement getLocation(final String fqcn) {
+        return requiresLocation() ? StackLocatorUtil.calcLocation(fqcn) : null;
+    }
+
+    // LOG4J2-1990 Log4j2 suppresses all exceptions that occur once application called the logger
+    // TODO Configuration setting to propagate exceptions back to the caller *if requested*
+    private void handleLogMessageException(final Throwable throwable, final String fqcn, final Message message) {
+        if (throwable instanceof LoggingException) {
+            throw (LoggingException) throwable;
+        }
+        StatusLogger.getLogger().warn("{} caught {} logging {}: {}",
+                fqcn,
+                throwable.getClass().getName(),
+                message.getClass().getSimpleName(),
+                message.getFormat(),
+                throwable);
     }
 
     @Override
@@ -2699,5 +2712,125 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
             final Object p4, final Object p5, final Object p6,
             final Object p7, final Object p8, final Object p9) {
         logIfEnabled(FQCN, Level.WARN, null, message, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
+    }
+
+    protected boolean requiresLocation() {
+        return false;
+    }
+
+    /**
+     * Construct a trace log event.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public  LogBuilder atTrace() {
+        return atLevel(Level.TRACE);
+    }
+
+    /**
+     * Construct a debug log event.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public LogBuilder atDebug() {
+        return atLevel(Level.DEBUG);
+    }
+
+    /**
+     * Construct an informational log event.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public LogBuilder atInfo() {
+        return atLevel(Level.INFO);
+    }
+
+    /**
+     * Construct a warning log event.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public LogBuilder atWarn() {
+        return atLevel(Level.WARN);
+    }
+
+    /**
+     * Construct an error log event.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public LogBuilder atError() {
+        return atLevel(Level.ERROR);
+    }
+
+    /**
+     * Construct a fatal log event.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public LogBuilder atFatal() {
+        return atLevel(Level.FATAL);
+    }
+
+    /**
+     * Construct a log event that will always be logged.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public LogBuilder always() {
+        final DefaultLogBuilder builder = logBuilder.get();
+        if (builder.isInUse()) {
+            return new DefaultLogBuilder(this);
+        }
+        return builder.reset(Level.OFF);
+    }
+
+    /**
+     * Construct a log event.
+     * @return a LogBuilder.
+     * @since 2.13.0
+     */
+    @Override
+    public LogBuilder atLevel(final Level level) {
+        if (isEnabled(level)) {
+            return (getLogBuilder(level).reset(level));
+        } else {
+            return LogBuilder.NOOP;
+        }
+    }
+
+    private DefaultLogBuilder getLogBuilder(final Level level) {
+        final DefaultLogBuilder builder = logBuilder.get();
+        return Constants.isThreadLocalsEnabled() && !builder.isInUse() ? builder : new DefaultLogBuilder(this, level);
+    }
+
+    private void readObject (final ObjectInputStream s) throws ClassNotFoundException, IOException {
+        s.defaultReadObject( );
+        try {
+            final Field f = this.getClass().getDeclaredField("logBuilder");
+            f.setAccessible(true);
+            f.set(this, new LocalLogBuilder(this));
+        } catch (final NoSuchFieldException | IllegalAccessException ex) {
+            StatusLogger.getLogger().warn("Unable to initialize LogBuilder");
+        }
+    }
+
+    private static class LocalLogBuilder extends ThreadLocal<DefaultLogBuilder> {
+        private final AbstractLogger logger;
+        LocalLogBuilder(final AbstractLogger logger) {
+            this.logger = logger;
+        }
+
+        @Override
+        protected DefaultLogBuilder initialValue() {
+            return new DefaultLogBuilder(logger);
+        }
     }
 }

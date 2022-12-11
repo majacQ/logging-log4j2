@@ -12,16 +12,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-.project
-.idea
-**/*.iml
-**/target
-target/
-.settings
-.classpath
+bin/
 .cache-main
 .cache-tests
-velocity.log
+.classpath
+.factorypath
 felix-cache/
-bin/
+.idea
+**/*.iml
+/.metadata/
+.mvn/wrapper/MavenWrapperDownloader.java
+.project
+.settings
+.surefire-*
+**/target
+target/
+.toDelete
+velocity.log

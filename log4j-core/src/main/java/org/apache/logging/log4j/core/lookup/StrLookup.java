@@ -17,6 +17,9 @@
 package org.apache.logging.log4j.core.lookup;
 
 import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.di.Key;
+import org.apache.logging.log4j.plugins.model.PluginNamespace;
 
 /**
  * Lookup a String key to a String value.
@@ -24,10 +27,6 @@ import org.apache.logging.log4j.core.LogEvent;
  * This class represents the simplest form of a string to string map.
  * It has a benefit over a map in that it can create the result on
  * demand based on the key.
- * </p>
- * <p>
- * This class comes complete with various factory methods.
- * If these do not suffice, you can subclass and implement your own matcher.
  * </p>
  * <p>
  * For example, it would be possible to implement a lookup that used the
@@ -42,6 +41,8 @@ public interface StrLookup {
      * @since 2.1
      */
     String CATEGORY = "Lookup";
+
+    Key<PluginNamespace> PLUGIN_CATEGORY_KEY = new @Namespace(CATEGORY) Key<>() {};
 
     /**
      * Looks up a String key to a String value.

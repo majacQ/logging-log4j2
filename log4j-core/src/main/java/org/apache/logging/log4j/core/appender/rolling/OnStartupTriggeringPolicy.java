@@ -16,20 +16,21 @@
  */
 package org.apache.logging.log4j.core.appender.rolling;
 
-import java.lang.reflect.Method;
-
-import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.util.Loader;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.status.StatusLogger;
+
+import java.lang.reflect.Method;
 
 /**
  * Triggers a rollover on every restart, but only if the file size is greater than zero.
  */
-@Plugin(name = "OnStartupTriggeringPolicy", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public class OnStartupTriggeringPolicy extends AbstractTriggeringPolicy {
 
     private static final long JVM_START_TIME = initStartTime();
@@ -58,9 +59,8 @@ public class OnStartupTriggeringPolicy extends AbstractTriggeringPolicy {
 
             final Class<?> runtimeMXBeanClass = Loader.loadSystemClass("java.lang.management.RuntimeMXBean");
             final Method getStartTime = runtimeMXBeanClass.getMethod("getStartTime");
-            final Long result = (Long) getStartTime.invoke(runtimeMXBean);
 
-            return result;
+            return (Long) getStartTime.invoke(runtimeMXBean);
         } catch (final Throwable t) {
             StatusLogger.getLogger().error("Unable to call ManagementFactory.getRuntimeMXBean().getStartTime(), "
                     + "using system time for OnStartupTriggeringPolicy", t);
@@ -76,6 +76,7 @@ public class OnStartupTriggeringPolicy extends AbstractTriggeringPolicy {
     @Override
     public void initialize(final RollingFileManager manager) {
         if (manager.getFileTime() < JVM_START_TIME && manager.getFileSize() >= minSize) {
+            StatusLogger.getLogger().debug("Initiating rollover at startup");
             if (minSize == 0) {
                 manager.setRenameEmptyFiles(true);
             }
@@ -102,7 +103,7 @@ public class OnStartupTriggeringPolicy extends AbstractTriggeringPolicy {
 
     @PluginFactory
     public static OnStartupTriggeringPolicy createPolicy(
-            @PluginAttribute(value = "minSize", defaultLong = 1) final long minSize) {
+            @PluginAttribute(defaultLong = 1) final long minSize) {
         return new OnStartupTriggeringPolicy(minSize);
     }
 }

@@ -16,19 +16,13 @@
  */
 package org.apache.logging.log4j.perf.jmh;
 
-import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.AppenderControl;
 import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -36,6 +30,13 @@ import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.infra.Blackhole;
+
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 // ============================== HOW TO RUN THIS TEST: ====================================
 //
@@ -52,12 +53,12 @@ import org.openjdk.jmh.infra.Blackhole;
 public class LoggerConfigBenchmark {
 
     private final CopyOnWriteArraySet<AppenderControl> appenderSet = new CopyOnWriteArraySet<>();
-    private volatile Filter filter = null;
+    private volatile Filter filter;
     private final boolean additive = true;
     private final boolean includeLocation = true;
     private LoggerConfig parent;
     private final AtomicInteger counter = new AtomicInteger();
-    private final AtomicBoolean shutdown = new AtomicBoolean(false);
+    private final AtomicBoolean shutdown = new AtomicBoolean();
     private final Lock shutdownLock = new ReentrantLock();
     private final Condition noLogEvents = shutdownLock.newCondition(); // should only be used when shutdown == true
     private final LogEvent LOGEVENT = createLogEventWithoutException();
@@ -68,7 +69,7 @@ public class LoggerConfigBenchmark {
         private final AtomicInteger count = new AtomicInteger();
 
         protected SimpleListAppender() {
-            super("list", null, null);
+            super("list", null, null, true, Property.EMPTY_ARRAY);
         }
 
         @Override
@@ -94,7 +95,12 @@ public class LoggerConfigBenchmark {
     }
 
     private static LogEvent createLogEventWithoutException() {
-        return new Log4jLogEvent("a.b.c", null, "a.b.c", Level.INFO, new SimpleMessage("abc"), null, null);
+        return Log4jLogEvent.newBuilder()
+                .setLoggerName("a.b.c")
+                .setLoggerFqcn("a.b.c")
+                .setLevel(Level.INFO)
+                .setMessage(new SimpleMessage("abc"))
+                .build();
     }
 
     @Benchmark
@@ -163,7 +169,7 @@ public class LoggerConfigBenchmark {
             processLogEvent(event);
         }
     }
-    
+
     volatile LoggerConfigBenchmark loggerConfig = this;
 
     /**
@@ -185,7 +191,7 @@ public class LoggerConfigBenchmark {
 
     /**
      * Determine if the LogEvent should be processed or ignored.
-     * 
+     *
      * @param event The LogEvent.
      * @return true if the LogEvent should be processed.
      */

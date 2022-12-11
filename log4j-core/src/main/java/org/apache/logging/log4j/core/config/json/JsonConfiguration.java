@@ -17,7 +17,6 @@
 package org.apache.logging.log4j.core.config.json;
 
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -26,22 +25,21 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.AbstractConfiguration;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationSource;
-import org.apache.logging.log4j.core.config.ConfiguratonFileWatcher;
 import org.apache.logging.log4j.core.config.LoggerConfig;
-import org.apache.logging.log4j.core.config.Node;
 import org.apache.logging.log4j.core.config.Reconfigurable;
-import org.apache.logging.log4j.core.config.plugins.util.PluginType;
-import org.apache.logging.log4j.core.config.plugins.util.ResolverUtil;
 import org.apache.logging.log4j.core.config.status.StatusConfiguration;
-import org.apache.logging.log4j.core.util.FileWatcher;
 import org.apache.logging.log4j.core.util.Patterns;
+import org.apache.logging.log4j.plugins.Node;
+import org.apache.logging.log4j.plugins.model.PluginType;
+import org.apache.logging.log4j.plugins.util.ResolverUtil;
+
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Creates a Node hierarchy from a JSON file.
@@ -54,11 +52,10 @@ public class JsonConfiguration extends AbstractConfiguration implements Reconfig
 
     public JsonConfiguration(final LoggerContext loggerContext, final ConfigurationSource configSource) {
         super(loggerContext, configSource);
-        final File configFile = configSource.getFile();
-        byte[] buffer;
+        final byte[] buffer;
         try {
             try (final InputStream configStream = configSource.getInputStream()) {
-                buffer = toByteArray(configStream);
+                buffer = configStream.readAllBytes();
             }
             final InputStream is = new ByteArrayInputStream(buffer);
             root = getObjectMapper().readTree(is);
@@ -68,39 +65,34 @@ public class JsonConfiguration extends AbstractConfiguration implements Reconfig
                 }
             }
             processAttributes(rootNode, root);
-            final StatusConfiguration statusConfig = new StatusConfiguration().withVerboseClasses(VERBOSE_CLASSES)
-                    .withStatus(getDefaultStatus());
+            final StatusConfiguration statusConfig = new StatusConfiguration().setVerboseClasses(VERBOSE_CLASSES)
+                    .setStatus(getDefaultStatus());
+            int monitorIntervalSeconds = 0;
             for (final Map.Entry<String, String> entry : rootNode.getAttributes().entrySet()) {
                 final String key = entry.getKey();
-                final String value = getStrSubstitutor().replace(entry.getValue());
+                final String value = getConfigurationStrSubstitutor().replace(entry.getValue());
                 // TODO: this duplicates a lot of the XmlConfiguration constructor
                 if ("status".equalsIgnoreCase(key)) {
-                    statusConfig.withStatus(value);
+                    statusConfig.setStatus(value);
                 } else if ("dest".equalsIgnoreCase(key)) {
-                    statusConfig.withDestination(value);
+                    statusConfig.setDestination(value);
                 } else if ("shutdownHook".equalsIgnoreCase(key)) {
                     isShutdownHookEnabled = !"disable".equalsIgnoreCase(value);
                 } else if ("shutdownTimeout".equalsIgnoreCase(key)) {
                     shutdownTimeoutMillis = Long.parseLong(value);
                 } else if ("verbose".equalsIgnoreCase(entry.getKey())) {
-                    statusConfig.withVerbosity(value);
+                    statusConfig.setVerbosity(value);
                 } else if ("packages".equalsIgnoreCase(key)) {
                     pluginPackages.addAll(Arrays.asList(value.split(Patterns.COMMA_SEPARATOR)));
                 } else if ("name".equalsIgnoreCase(key)) {
                     setName(value);
                 } else if ("monitorInterval".equalsIgnoreCase(key)) {
-                    final int intervalSeconds = Integer.parseInt(value);
-                    if (intervalSeconds > 0) {
-                        getWatchManager().setIntervalSeconds(intervalSeconds);
-                        if (configFile != null) {
-                            final FileWatcher watcher = new ConfiguratonFileWatcher(this, listeners);
-                            getWatchManager().watchFile(configFile, watcher);
-                        }
-                    }
+                    monitorIntervalSeconds = Integer.parseInt(value);
                 } else if ("advertiser".equalsIgnoreCase(key)) {
                     createAdvertiser(value, configSource, buffer, "application/json");
                 }
             }
+            initializeWatchers(this, configSource, monitorIntervalSeconds);
             statusConfig.initialize();
             if (getName() == null) {
                 setName(configSource.getLocation());
@@ -151,7 +143,7 @@ public class JsonConfiguration extends AbstractConfiguration implements Reconfig
     }
 
     private Node constructNode(final String name, final Node parent, final JsonNode jsonNode) {
-        final PluginType<?> type = pluginManager.getPluginType(name);
+        final PluginType<?> type = corePlugins.get(name);
         final Node node = new Node(parent, name, type);
         processAttributes(node, jsonNode);
         final Iterator<Map.Entry<String, JsonNode>> iter = jsonNode.fields();
@@ -167,7 +159,7 @@ public class JsonConfiguration extends AbstractConfiguration implements Reconfig
                     LOGGER.debug("Processing node for array {}", entry.getKey());
                     for (int i = 0; i < n.size(); ++i) {
                         final String pluginType = getType(n.get(i), entry.getKey());
-                        final PluginType<?> entryType = pluginManager.getPluginType(pluginType);
+                        final PluginType<?> entryType = corePlugins.get(pluginType);
                         final Node item = new Node(node, entry.getKey(), entryType);
                         processAttributes(item, n.get(i));
                         if (pluginType.equals(entry.getKey())) {
@@ -203,11 +195,11 @@ public class JsonConfiguration extends AbstractConfiguration implements Reconfig
             }
         }
 
-        String t;
+        final String t;
         if (type == null) {
             t = "null";
         } else {
-            t = type.getElementName() + ':' + type.getPluginClass();
+            t = type.getElementType() + ':' + type.getPluginClass();
         }
 
         final String p = node.getParent() == null ? "null"

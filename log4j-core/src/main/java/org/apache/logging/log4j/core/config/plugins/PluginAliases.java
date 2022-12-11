@@ -16,6 +16,9 @@
  */
 package org.apache.logging.log4j.core.config.plugins;
 
+import org.apache.logging.log4j.core.config.plugins.util.PluginAliasesProvider;
+import org.apache.logging.log4j.plugins.name.AliasesProvider;
+
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -23,11 +26,14 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Identifies a list of aliases for a {@link Plugin}, {@link PluginAttribute}, or {@link PluginBuilderAttribute}.
+ * Identifies a list of aliases for a Plugin, PluginAttribute, or PluginBuilderAttribute.
+ * @deprecated Exists for compatibility with Log4j 2 2.x plugins. Not used for Log4j 2 3.x plugins.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.PARAMETER, ElementType.TYPE, ElementType.FIELD})
+@AliasesProvider(PluginAliasesProvider.class)
+@Deprecated(since = "3.0.0")
 public @interface PluginAliases {
 
     String[] value();

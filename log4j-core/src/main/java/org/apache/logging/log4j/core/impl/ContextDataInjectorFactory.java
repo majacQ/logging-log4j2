@@ -19,11 +19,11 @@ package org.apache.logging.log4j.core.impl;
 import org.apache.logging.log4j.ThreadContext;
 import org.apache.logging.log4j.core.ContextDataInjector;
 import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.util.Loader;
 import org.apache.logging.log4j.spi.CopyOnWrite;
 import org.apache.logging.log4j.spi.DefaultThreadContextMap;
 import org.apache.logging.log4j.spi.ReadOnlyThreadContextMap;
 import org.apache.logging.log4j.status.StatusLogger;
-import org.apache.logging.log4j.util.LoaderUtil;
 import org.apache.logging.log4j.util.PropertiesUtil;
 import org.apache.logging.log4j.util.ReadOnlyStringMap;
 
@@ -48,6 +48,10 @@ public class ContextDataInjectorFactory {
      * {@code ContextDataInjector} classes defined in {@link ThreadContextDataInjector} which is most appropriate for
      * the ThreadContext implementation.
      * <p>
+     * <b>Note:</b> It is no longer recommended that users provide a custom implementation of the ContextDataInjector.
+     * Instead, provide a {@code ContextDataProvider}.
+     * </p>
+     * <p>
      * Users may use this system property to specify the fully qualified class name of a class that implements the
      * {@code ContextDataInjector} interface.
      * </p><p>
@@ -62,12 +66,12 @@ public class ContextDataInjectorFactory {
      * @see ContextDataInjector
      */
     public static ContextDataInjector createInjector() {
-        final String className = PropertiesUtil.getProperties().getStringProperty("log4j2.ContextDataInjector");
+        final String className = PropertiesUtil.getProperties().getStringProperty(Log4jProperties.THREAD_CONTEXT_DATA_INJECTOR_CLASS_NAME);
         if (className == null) {
             return createDefaultInjector();
         }
         try {
-            final Class<? extends ContextDataInjector> cls = LoaderUtil.loadClass(className).asSubclass(
+            final Class<? extends ContextDataInjector> cls = Loader.loadClass(className).asSubclass(
                     ContextDataInjector.class);
             return cls.newInstance();
         } catch (final Exception dynamicFailed) {

@@ -16,7 +16,6 @@
  */
 package org.apache.logging.log4j.core.layout;
 
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 
@@ -24,11 +23,13 @@ import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.StringLayout;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
 import org.apache.logging.log4j.core.impl.DefaultLogEventFactory;
+import org.apache.logging.log4j.core.impl.Log4jProperties;
 import org.apache.logging.log4j.core.util.Constants;
 import org.apache.logging.log4j.core.util.StringEncoder;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.spi.AbstractLogger;
 import org.apache.logging.log4j.util.PropertiesUtil;
 import org.apache.logging.log4j.util.StringBuilders;
 import org.apache.logging.log4j.util.Strings;
@@ -39,10 +40,6 @@ import org.apache.logging.log4j.util.Strings;
  * Since 2.4.1, this class has custom logic to convert ISO-8859-1 or US-ASCII Strings to byte[] arrays to improve
  * performance: all characters are simply cast to bytes.
  * </p>
- */
-/*
- * Implementation note: prefer String.getBytes(String) to String.getBytes(Charset) for performance reasons. See
- * https://issues.apache.org/jira/browse/LOG4J2-935 for details.
  */
 public abstract class AbstractStringLayout extends AbstractLayout<String> implements StringLayout {
 
@@ -69,32 +66,43 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
             return headerSerializer;
         }
 
-        public B setCharset(Charset charset) {
+        public B setCharset(final Charset charset) {
             this.charset = charset;
             return asBuilder();
         }
 
-        public B setFooterSerializer(Serializer footerSerializer) {
+        public B setFooterSerializer(final Serializer footerSerializer) {
             this.footerSerializer = footerSerializer;
             return asBuilder();
         }
 
-        public B setHeaderSerializer(Serializer headerSerializer) {
+        public B setHeaderSerializer(final Serializer headerSerializer) {
             this.headerSerializer = headerSerializer;
             return asBuilder();
         }
 
     }
 
-    public interface Serializer {
+    public interface Serializer extends Serializer2 {
         String toSerializable(final LogEvent event);
+
+        default boolean requiresLocation() {
+            return false;
+        }
+
+        @Override
+        default StringBuilder toSerializable(final LogEvent event, final StringBuilder builder) {
+            builder.append(toSerializable(event));
+            return builder;
+        }
     }
 
     /**
      * Variation of {@link Serializer} that avoids allocating temporary objects.
+     * As of 2.13 this interface was merged into the Serializer interface.
      * @since 2.6
      */
-    public interface Serializer2 {
+    public interface Serializer2  {
         StringBuilder toSerializable(final LogEvent event, final StringBuilder builder);
     }
 
@@ -104,7 +112,7 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
     protected static final int DEFAULT_STRING_BUILDER_SIZE = 1024;
 
     protected static final int MAX_STRING_BUILDER_SIZE = Math.max(DEFAULT_STRING_BUILDER_SIZE,
-            size("log4j.layoutStringBuilder.maxSize", 2 * 1024));
+            size(Log4jProperties.GC_LAYOUT_STRING_BUILDER_MAX_SIZE, 2 * 1024));
 
     private static final ThreadLocal<StringBuilder> threadLocal = new ThreadLocal<>();
 
@@ -114,6 +122,10 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
      * @return a {@code StringBuilder}
      */
     protected static StringBuilder getStringBuilder() {
+        if (AbstractLogger.getRecursionDepth() > 1) { // LOG4J2-2368
+            // Recursive logging may clobber the cached StringBuilder.
+            return new StringBuilder(DEFAULT_STRING_BUILDER_SIZE);
+        }
         StringBuilder result = threadLocal.get();
         if (result == null) {
             result = new StringBuilder(DEFAULT_STRING_BUILDER_SIZE);
@@ -122,18 +134,6 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
         trimToMaxSize(result);
         result.setLength(0);
         return result;
-    }
-
-    // LOG4J2-1151: If the built-in JDK 8 encoders are available we should use them.
-    private static boolean isPreJava8() {
-        final String version = System.getProperty("java.version");
-        final String[] parts = version.split("\\.");
-        try {
-            final int major = Integer.parseInt(parts[1]);
-            return major < 8;
-        } catch (final Exception ex) {
-            return true;
-        }
     }
 
     private static int size(final String property, final int defaultValue) {
@@ -148,16 +148,11 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
     /**
      * The charset for the formatted message.
      */
-    // LOG4J2-1099: charset cannot be final due to serialization needs, so we serialize as charset name instead
-    private transient Charset charset;
-
-    private final String charsetName;
+    private final Charset charset;
 
     private final Serializer footerSerializer;
 
     private final Serializer headerSerializer;
-
-    private final boolean useCustomEncoding;
 
     protected AbstractStringLayout(final Charset charset) {
         this(charset, (byte[]) null, (byte[]) null);
@@ -175,9 +170,6 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
         this.headerSerializer = null;
         this.footerSerializer = null;
         this.charset = aCharset == null ? StandardCharsets.UTF_8 : aCharset;
-        this.charsetName = this.charset.name();
-        useCustomEncoding = isPreJava8()
-                && (StandardCharsets.ISO_8859_1.equals(aCharset) || StandardCharsets.US_ASCII.equals(aCharset));
         textEncoder = Constants.ENABLE_DIRECT_ENCODERS ? new StringBuilderEncoder(charset) : null;
     }
 
@@ -195,21 +187,11 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
         this.headerSerializer = headerSerializer;
         this.footerSerializer = footerSerializer;
         this.charset = aCharset == null ? StandardCharsets.UTF_8 : aCharset;
-        this.charsetName = this.charset.name();
-        useCustomEncoding = isPreJava8()
-                && (StandardCharsets.ISO_8859_1.equals(aCharset) || StandardCharsets.US_ASCII.equals(aCharset));
         textEncoder = Constants.ENABLE_DIRECT_ENCODERS ? new StringBuilderEncoder(charset) : null;
     }
 
     protected byte[] getBytes(final String s) {
-        if (useCustomEncoding) { // rely on branch prediction to eliminate this check if false
-            return StringEncoder.encodeSingleByteChars(s);
-        }
-        try { // LOG4J2-935: String.getBytes(String) gives better performance
-            return s.getBytes(charsetName);
-        } catch (final UnsupportedEncodingException e) {
-            return s.getBytes(charset);
-        }
+        return s.getBytes(charset);
     }
 
     @Override
@@ -254,7 +236,8 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
     }
 
     private DefaultLogEventFactory getLogEventFactory() {
-        return DefaultLogEventFactory.getInstance();
+        // TODO: inject this
+        return DefaultLogEventFactory.newInstance();
     }
 
     /**
@@ -271,7 +254,7 @@ public abstract class AbstractStringLayout extends AbstractLayout<String> implem
 
     protected byte[] serializeToBytes(final Serializer serializer, final byte[] defaultValue) {
         final String serializable = serializeToString(serializer);
-        if (serializer == null) {
+        if (serializable == null) {
             return defaultValue;
         }
         return StringEncoder.toBytes(serializable, getCharset());

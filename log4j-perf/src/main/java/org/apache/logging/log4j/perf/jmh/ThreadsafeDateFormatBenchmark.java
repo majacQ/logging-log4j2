@@ -18,12 +18,14 @@
 package org.apache.logging.log4j.perf.jmh;
 
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.logging.log4j.core.util.datetime.FixedDateFormat;
-import org.apache.logging.log4j.core.util.datetime.FastDateFormat;
+import org.apache.logging.log4j.core.time.internal.format.FixedDateFormat;
+import org.apache.logging.log4j.core.time.internal.format.FastDateFormat;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Mode;
@@ -49,6 +51,7 @@ import org.openjdk.jmh.annotations.State;
 public class ThreadsafeDateFormatBenchmark {
 
     private final Date date = new Date();
+    private final DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
     private final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("HH:mm:ss.SSS");
     private final ThreadLocal<SimpleDateFormat> threadLocalSDFormat = new ThreadLocal<SimpleDateFormat>() {
         @Override
@@ -67,7 +70,7 @@ public class ThreadsafeDateFormatBenchmark {
     private final FastDateFormat fastDateFormat = FastDateFormat.getInstance("HH:mm:ss.SSS");
     private final FixedDateFormat fixedDateFormat = FixedDateFormat.createIfSupported("HH:mm:ss.SSS");
     private final FormatterFixedReuseBuffer formatFixedReuseBuffer = new FormatterFixedReuseBuffer();
-    
+
     private class CachedTimeFastFormat {
         private final long timestamp;
         private final String formatted;
@@ -158,6 +161,14 @@ public class ThreadsafeDateFormatBenchmark {
             }
             return cachedTime;
         }
+    }
+
+    @Benchmark
+    @BenchmarkMode(Mode.SampleTime)
+    @OutputTimeUnit(TimeUnit.NANOSECONDS)
+    public String dateTimeFormatter() {
+        final LocalDateTime now = LocalDateTime.now();
+        return dateTimeFormatter.format(now);
     }
 
     @Benchmark

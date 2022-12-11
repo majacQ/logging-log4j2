@@ -21,74 +21,44 @@ import java.io.PrintStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
-import org.apache.logging.log4j.osgi.tests.junit.BundleTestInfo;
-import org.apache.logging.log4j.osgi.tests.junit.OsgiRule;
 import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
 import org.osgi.framework.Bundle;
-import org.osgi.framework.BundleContext;
 import org.osgi.framework.BundleException;
-import org.osgi.framework.launch.FrameworkFactory;
 
 /**
  * Tests a basic Log4J 'setup' in an OSGi container.
  */
-public abstract class AbstractLoadBundleTest {
-
-    private BundleContext bundleContext;
-
-    private final BundleTestInfo bundleTestInfo;
-
-    private Path here;
-    
-    @Rule
-    public OsgiRule osgi = new OsgiRule(getFactory());
-    /**
-     * Constructs a test for a given bundle.
-     */
-    public AbstractLoadBundleTest() {
-        super();
-        this.bundleTestInfo = new BundleTestInfo();
-    }
-
-    /**
-     * Called before each @Test.
-     */
-    @Before
-    public void before() throws BundleException {
-        bundleContext = osgi.getFramework().getBundleContext();
-        
-        here = Paths.get(".").toAbsolutePath().normalize();
-    }
+public abstract class AbstractLoadBundleTest extends AbstractOsgiTest {
 
     private Bundle getApiBundle() throws BundleException {
-        final Path apiPath = here.resolveSibling("log4j-api").resolve("target").resolve("log4j-api-" + bundleTestInfo.getVersion() + ".jar");
-        return bundleContext.installBundle(apiPath.toUri().toString());
+        final Path apiPath = getHere().resolveSibling("log4j-api").resolve("target").resolve(getBundleTestInfo().buildJarFileName("log4j-api"));
+        return getBundleContext().installBundle(apiPath.toUri().toString());
+    }
+
+    private Bundle getPluginsBundle() throws BundleException {
+        final Path apiPath = getHere().resolveSibling("log4j-plugins").resolve("target").resolve(getBundleTestInfo().buildJarFileName("log4j-plugins"));
+        return getBundleContext().installBundle(apiPath.toUri().toString());
     }
 
 
     private Bundle getCoreBundle() throws BundleException {
-        final Path corePath = here.resolveSibling("log4j-core").resolve("target").resolve("log4j-core-" + bundleTestInfo.getVersion() + ".jar");
-        return bundleContext.installBundle(corePath.toUri().toString());
+        final Path corePath = getHere().resolveSibling("log4j-core").resolve("target").resolve(getBundleTestInfo().buildJarFileName("log4j-core"));
+        return getBundleContext().installBundle(corePath.toUri().toString());
     }
-    
+
     private Bundle getDummyBundle() throws BundleException {
-        final Path dumyPath = here.resolveSibling("log4j-samples").resolve("configuration").resolve("target").resolve("log4j-samples-configuration-" + bundleTestInfo.getVersion() + ".jar");
-        return bundleContext.installBundle(dumyPath.toUri().toString());
+        final Path dumyPath = getHere().resolveSibling("log4j-samples").resolve("log4j-samples-configuration").resolve("target").resolve(getBundleTestInfo().buildJarFileName("log4j-samples-configuration"));
+        return getBundleContext().installBundle(dumyPath.toUri().toString());
     }
 
     private Bundle get12ApiBundle() throws BundleException {
-        final Path apiPath = here.resolveSibling("log4j-1.2-api").resolve("target").resolve("log4j-1.2-api-" + bundleTestInfo.getVersion() + ".jar");
-        return bundleContext.installBundle(apiPath.toUri().toString());
+        final Path apiPath = getHere().resolveSibling("log4j-1.2-api").resolve("target").resolve(getBundleTestInfo().buildJarFileName("log4j-1.2-api"));
+        return getBundleContext().installBundle(apiPath.toUri().toString());
     }
 
-    
-    protected abstract FrameworkFactory getFactory();
-    
+
     private void log(final Bundle dummy) throws ReflectiveOperationException {
         // use reflection to log in the context of the dummy bundle
 
@@ -128,21 +98,24 @@ public abstract class AbstractLoadBundleTest {
         return oldStream;
     }
 
-    private void start(final Bundle api, final Bundle core, final Bundle dummy) throws BundleException {
+    private void start(final Bundle api, final Bundle plugins, final Bundle core, final Bundle dummy) throws BundleException {
         api.start();
+        plugins.start();
         core.start();
-        dummy.start();        
+        dummy.start();
     }
 
-    private void stop(final Bundle api, final Bundle core, final Bundle dummy) throws BundleException {
+    private void stop(final Bundle api, final Bundle plugins, final Bundle core, final Bundle dummy) throws BundleException {
         dummy.stop();
         core.stop();
+        plugins.stop();
         api.stop();
     }
-    
-    private void uninstall(final Bundle api, final Bundle core, final Bundle dummy) throws BundleException {
+
+    private void uninstall(final Bundle api, final Bundle plugins, final Bundle core, final Bundle dummy) throws BundleException {
         dummy.uninstall();
         core.uninstall();
+        plugins.uninstall();
         api.uninstall();
     }
 
@@ -150,42 +123,54 @@ public abstract class AbstractLoadBundleTest {
      * Tests starting, then stopping, then restarting, then stopping, and finally uninstalling the API and Core bundles
      */
     @Test
-    public void testApiCoreStartStopStartStop() throws BundleException, ReflectiveOperationException {
+    public void testApiCoreStartStopStartStop() throws BundleException {
 
         final Bundle api = getApiBundle();
+        final Bundle plugins = getPluginsBundle();
         final Bundle core = getCoreBundle();
-        
+
         Assert.assertEquals("api is not in INSTALLED state", Bundle.INSTALLED, api.getState());
+        Assert.assertEquals("plugins is not in INSTALLED state", Bundle.INSTALLED, plugins.getState());
         Assert.assertEquals("core is not in INSTALLED state", Bundle.INSTALLED, core.getState());
 
         api.start();
+        plugins.start();
         core.start();
-        
-        Assert.assertEquals("api is not in ACTIVE state", Bundle.ACTIVE, api.getState());        
-        Assert.assertEquals("core is not in ACTIVE state", Bundle.ACTIVE, core.getState());        
-        
+
+        Assert.assertEquals("api is not in ACTIVE state", Bundle.ACTIVE, api.getState());
+        Assert.assertEquals("plugins is not in ACTIVE state", Bundle.ACTIVE, plugins.getState());
+        Assert.assertEquals("core is not in ACTIVE state", Bundle.ACTIVE, core.getState());
+
         core.stop();
+        plugins.stop();
         api.stop();
-        
+
         Assert.assertEquals("api is not in RESOLVED state", Bundle.RESOLVED, api.getState());
+        Assert.assertEquals("plugins is not in RESOLVED state", Bundle.RESOLVED, plugins.getState());
         Assert.assertEquals("core is not in RESOLVED state", Bundle.RESOLVED, core.getState());
-        
+
         api.start();
+        plugins.start();
         core.start();
-        
-        Assert.assertEquals("api is not in ACTIVE state", Bundle.ACTIVE, api.getState());        
-        Assert.assertEquals("core is not in ACTIVE state", Bundle.ACTIVE, core.getState());        
-        
+
+        Assert.assertEquals("api is not in ACTIVE state", Bundle.ACTIVE, api.getState());
+        Assert.assertEquals("plugins is not in ACTIVE state", Bundle.ACTIVE, plugins.getState());
+        Assert.assertEquals("core is not in ACTIVE state", Bundle.ACTIVE, core.getState());
+
         core.stop();
+        plugins.stop();
         api.stop();
-        
+
         Assert.assertEquals("api is not in RESOLVED state", Bundle.RESOLVED, api.getState());
+        Assert.assertEquals("plugins is not in RESOLVED state", Bundle.RESOLVED, plugins.getState());
         Assert.assertEquals("core is not in RESOLVED state", Bundle.RESOLVED, core.getState());
-        
+
         core.uninstall();
+        plugins.uninstall();
         api.uninstall();
-        
+
         Assert.assertEquals("api is not in UNINSTALLED state", Bundle.UNINSTALLED, api.getState());
+        Assert.assertEquals("plugins is not in UNINSTALLED state", Bundle.UNINSTALLED, plugins.getState());
         Assert.assertEquals("core is not in UNINSTALLED state", Bundle.UNINSTALLED, core.getState());
     }
 
@@ -196,9 +181,11 @@ public abstract class AbstractLoadBundleTest {
     public void testClassNotFoundErrorLogger() throws BundleException {
 
         final Bundle api = getApiBundle();
+        final Bundle plugins = getPluginsBundle();
         final Bundle core = getCoreBundle();
 
         api.start();
+        plugins.start();
         // fails if LOG4J2-1637 is not fixed
         try {
             core.start();
@@ -222,9 +209,11 @@ public abstract class AbstractLoadBundleTest {
         }
 
         core.stop();
+        plugins.stop();
         api.stop();
-        
+
         core.uninstall();
+        plugins.uninstall();
         api.uninstall();
     }
 
@@ -232,13 +221,14 @@ public abstract class AbstractLoadBundleTest {
      * Tests LOG4J2-920.
      */
     @Test
-    public void testMissingImportOfCoreOsgiPackage() throws BundleException, ReflectiveOperationException {
+    public void testLoadingOfConfigurableCoreClasses() throws BundleException, ReflectiveOperationException {
 
         final Bundle api = getApiBundle();
+        final Bundle plugins = getPluginsBundle();
         final Bundle core = getCoreBundle();
         final Bundle dummy = getDummyBundle();
 
-        start(api, core, dummy);
+        start(api, plugins, core, dummy);
 
         final ByteArrayOutputStream baos = new ByteArrayOutputStream();
         final PrintStream logStream = new PrintStream(baos);
@@ -249,13 +239,12 @@ public abstract class AbstractLoadBundleTest {
 
         setupStream(api, bakStream);
 
-        final boolean result = baos.toString().contains(
-            "ERROR StatusLogger Unable to create context org.apache.logging.log4j.core.osgi.BundleContextSelector");
-        Assert.assertFalse(
-            "org.apache.logging.log4j.core.osgi;resolution:=optional is missing in Import-Package in the POM", result);
+        // org.apache.logging.log4j.core.osgi.BundleContextSelector cannot be found by org.apache.logging.log4j.api
+        final boolean result = baos.toString().contains("BundleContextSelector cannot be found");
+        Assert.assertFalse("Core class BundleContextSelector cannot be loaded in OSGI setup", result);
 
-        stop(api, core, dummy);
-        uninstall(api, core, dummy);
+        stop(api, plugins, core, dummy);
+        uninstall(api, plugins, core, dummy);
     }
 
     /**
@@ -265,10 +254,11 @@ public abstract class AbstractLoadBundleTest {
     public void testSimpleLogInAnOsgiContext() throws BundleException, ReflectiveOperationException {
 
         final Bundle api = getApiBundle();
+        final Bundle plugins = getPluginsBundle();
         final Bundle core = getCoreBundle();
         final Bundle dummy = getDummyBundle();
 
-        start(api, core, dummy);
+        start(api, plugins, core, dummy);
 
         final PrintStream bakStream = System.out;
         try {
@@ -280,31 +270,34 @@ public abstract class AbstractLoadBundleTest {
 
             final String result = baos.toString().substring(
                 12).trim(); // remove the instant then the spaces at start and end, that are non constant
-            Assert.assertEquals("[main] ERROR org.apache.logging.log4j.configuration.CustomConfiguration - Test OK",
-                result);
+            String expected = "[main] ERROR org.apache.logging.log4j.configuration.CustomConfiguration - Test OK";
+            Assert.assertTrue("Incorrect string. Expected string ends with: " + expected + " Actual: " + result,
+                    result.endsWith(expected));
         } finally {
             System.setOut(bakStream);
         }
 
-        stop(api, core, dummy);
-        uninstall(api, core, dummy);
+        stop(api, plugins, core, dummy);
+        uninstall(api, plugins, core, dummy);
     }
 
 
     /**
-     * Tests the loading of the 1.2 Compatibitility API bundle, its classes should be loadable from the Core bundle, 
+     * Tests the loading of the 1.2 Compatibility API bundle, its classes should be loadable from the Core bundle,
      * and the class loader should be the same between a class from core and a class from compat
      */
     @Test
     public void testLog4J12Fragement() throws BundleException, ReflectiveOperationException {
 
         final Bundle api = getApiBundle();
+        final Bundle plugins = getPluginsBundle();
         final Bundle core = getCoreBundle();
         final Bundle compat = get12ApiBundle();
 
         api.start();
+        plugins.start();
         core.start();
-        
+
         final Class<?> coreClassFromCore = core.loadClass("org.apache.logging.log4j.core.Core");
         final Class<?> levelClassFrom12API = core.loadClass("org.apache.log4j.Level");
         final Class<?> levelClassFromAPI = core.loadClass("org.apache.logging.log4j.Level");
@@ -314,8 +307,8 @@ public abstract class AbstractLoadBundleTest {
 
         core.stop();
         api.stop();
-        
-        uninstall(api, core, compat);
+
+        uninstall(api, plugins, core, compat);
     }
 
 }

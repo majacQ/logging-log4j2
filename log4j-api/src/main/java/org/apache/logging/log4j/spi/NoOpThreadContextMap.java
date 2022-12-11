@@ -20,8 +20,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * {@code ThreadContextMap} implementation used when either of system properties {@code disableThreadContextMap} or .
- * {@code disableThreadContext} is {@code true}. This implementation does nothing.
+ * {@code ThreadContextMap} implementation used when either of system properties
+ * {@value LoggingSystemProperties#THREAD_CONTEXT_MAP_DISABLED} or
+ * {@value LoggingSystemProperties#THREAD_CONTEXT_DISABLED} is {@code true}. This implementation does nothing.
  *
  * @since 2.7
  */
@@ -61,5 +62,26 @@ public class NoOpThreadContextMap implements ThreadContextMap {
 
     @Override
     public void remove(final String key) {
+    }
+
+    @Override
+    public void putAll(final Map<String, String> map) {
+    }
+
+    @Override
+    public void removeAll(final Iterable<String> keys) {
+    }
+
+    @Override
+    public <V> V getValue(final String key) {
+        return null;
+    }
+
+    @Override
+    public <V> void putValue(final String key, final V value) {
+    }
+
+    @Override
+    public <V> void putAllValues(final Map<String, V> values) {
     }
 }

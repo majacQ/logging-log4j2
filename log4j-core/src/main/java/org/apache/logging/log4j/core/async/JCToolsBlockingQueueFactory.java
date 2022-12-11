@@ -16,23 +16,24 @@
  */
 package org.apache.logging.log4j.core.async;
 
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.jctools.queues.MpscArrayQueue;
+
 import java.util.Collection;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
-
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.jctools.queues.MpscArrayQueue;
 
 /**
  * Factory for creating instances of BlockingQueues backed by JCTools {@link MpscArrayQueue}.
  *
  * @since 2.7
  */
-@Plugin(name = "JCToolsBlockingQueue", category = Node.CATEGORY, elementType = BlockingQueueFactory.ELEMENT_TYPE)
+@Configurable(elementType = BlockingQueueFactory.ELEMENT_TYPE, printObject = true)
+@Plugin("JCToolsBlockingQueue")
 public class JCToolsBlockingQueueFactory<E> implements BlockingQueueFactory<E> {
 
     private final WaitStrategy waitStrategy;
@@ -48,7 +49,7 @@ public class JCToolsBlockingQueueFactory<E> implements BlockingQueueFactory<E> {
 
     @PluginFactory
     public static <E> JCToolsBlockingQueueFactory<E> createFactory(
-        @PluginAttribute(value = "WaitStrategy", defaultString = "PARK") final WaitStrategy waitStrategy) {
+        @PluginAttribute(defaultString = "PARK") final WaitStrategy waitStrategy) {
         return new JCToolsBlockingQueueFactory<>(waitStrategy);
     }
 
@@ -71,12 +72,7 @@ public class JCToolsBlockingQueueFactory<E> implements BlockingQueueFactory<E> {
 
         @Override
         public int drainTo(final Collection<? super E> c, final int maxElements) {
-            return drain(new Consumer<E>() {
-                @Override
-                public void accept(final E e) {
-                    c.add(e);
-                }
-            }, maxElements);
+            return drain(c::add, maxElements);
         }
 
         @Override
@@ -148,36 +144,22 @@ public class JCToolsBlockingQueueFactory<E> implements BlockingQueueFactory<E> {
     }
 
     public enum WaitStrategy {
-        SPIN(new Idle() {
-            @Override
-            public int idle(final int idleCounter) {
-                return idleCounter + 1;
-            }
+        SPIN(idleCounter -> idleCounter + 1),
+        YIELD(idleCounter -> {
+            Thread.yield();
+            return idleCounter + 1;
         }),
-        YIELD(new Idle() {
-            @Override
-            public int idle(final int idleCounter) {
-                Thread.yield();
-                return idleCounter + 1;
-            }
+        PARK(idleCounter -> {
+            LockSupport.parkNanos(1L);
+            return idleCounter + 1;
         }),
-        PARK(new Idle() {
-            @Override
-            public int idle(final int idleCounter) {
+        PROGRESSIVE(idleCounter -> {
+            if (idleCounter > 200) {
                 LockSupport.parkNanos(1L);
-                return idleCounter + 1;
+            } else if (idleCounter > 100) {
+                Thread.yield();
             }
-        }),
-        PROGRESSIVE(new Idle() {
-            @Override
-            public int idle(final int idleCounter) {
-                if (idleCounter > 200) {
-                    LockSupport.parkNanos(1L);
-                } else if (idleCounter > 100) {
-                    Thread.yield();
-                }
-                return idleCounter + 1;
-            }
+            return idleCounter + 1;
         });
 
         private final Idle idle;

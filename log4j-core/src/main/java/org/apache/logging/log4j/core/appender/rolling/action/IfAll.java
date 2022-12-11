@@ -16,21 +16,22 @@
  */
 package org.apache.logging.log4j.core.appender.rolling.action;
 
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.Objects;
 
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-
 /**
  * Composite {@code PathCondition} that only accepts objects that are accepted by <em>all</em> component conditions.
  * Corresponds to logical "AND".
  */
-@Plugin(name = "IfAll", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public final class IfAll implements PathCondition {
 
     private final PathCondition[] components;
@@ -45,7 +46,7 @@ public final class IfAll implements PathCondition {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.PathCondition#accept(java.nio.file.Path,
      * java.nio.file.Path, java.nio.file.attribute.BasicFileAttributes)
      */
@@ -59,7 +60,7 @@ public final class IfAll implements PathCondition {
 
     /**
      * Returns {@code true} if all the specified conditions accept the specified path, {@code false} otherwise.
-     * 
+     *
      * @param list the array of conditions to evaluate
      * @param baseDir the directory from where to start scanning for deletion candidate files
      * @param relativePath the candidate for deletion. This path is relative to the baseDir.
@@ -79,7 +80,7 @@ public final class IfAll implements PathCondition {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.PathCondition#beforeFileTreeWalk()
      */
     @Override
@@ -89,7 +90,7 @@ public final class IfAll implements PathCondition {
 
     /**
      * Calls {@link #beforeFileTreeWalk()} on all of the specified nested conditions.
-     * 
+     *
      * @param nestedConditions the conditions to call {@link #beforeFileTreeWalk()} on
      */
     public static void beforeFileTreeWalk(final PathCondition[] nestedConditions) {
@@ -100,12 +101,12 @@ public final class IfAll implements PathCondition {
 
     /**
      * Create a Composite PathCondition whose components all need to accept before this condition accepts.
-     * 
+     *
      * @param components The component filters.
      * @return A Composite PathCondition.
      */
     @PluginFactory
-    public static IfAll createAndCondition( //
+    public static IfAll createAndCondition(
             @PluginElement("PathConditions") final PathCondition... components) {
         return new IfAll(components);
     }

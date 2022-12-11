@@ -18,13 +18,19 @@ package org.apache.logging.log4j.core.util;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.MalformedURLException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.GroupPrincipal;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.UserPrincipal;
+import java.nio.file.attribute.UserPrincipalLookupService;
 import java.util.Objects;
+import java.util.Set;
 
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.status.StatusLogger;
@@ -51,41 +57,34 @@ public final class FileUtils {
      * @return the resulting file object
      */
     public static File fileFromUri(URI uri) {
-        // There MUST be a better way to do this. TODO Search other ASL projects...
-        if (uri == null
-                || (uri.getScheme() != null && (!PROTOCOL_FILE.equals(uri.getScheme()) && !JBOSS_FILE.equals(uri
-                        .getScheme())))) {
+        if (uri == null) {
             return null;
         }
-        if (uri.getScheme() == null) {
-            File file = new File(uri.toString());
-            if (file.exists()) {
-                return file;
+        if (uri.isAbsolute()) {
+            if (JBOSS_FILE.equals(uri.getScheme())) try {
+                // patch the scheme
+                uri = new URI(PROTOCOL_FILE, uri.getSchemeSpecificPart(), uri.getFragment());
+            } catch (final URISyntaxException use) {
+                // should not happen, ignore
             }
             try {
-                final String path = uri.getPath();
-                file = new File(path);
+                if (PROTOCOL_FILE.equals(uri.getScheme())) {
+                    return new File(uri);
+                }
+            } catch (final Exception ex) {
+                LOGGER.warn("Invalid URI {}", uri);
+            }
+        } else {
+            final File file = new File(uri.toString());
+            try {
                 if (file.exists()) {
                     return file;
                 }
-                uri = new File(path).toURI();
+                final String path = uri.getPath();
+                return new File(path);
             } catch (final Exception ex) {
                 LOGGER.warn("Invalid URI {}", uri);
-                return null;
             }
-        }
-        final String charsetName = StandardCharsets.UTF_8.name();
-        try {
-            String fileName = uri.toURL().getFile();
-            if (new File(fileName).exists()) { // LOG4J2-466
-                return new File(fileName); // allow files with '+' char in name
-            }
-            fileName = URLDecoder.decode(fileName, charsetName);
-            return new File(fileName);
-        } catch (final MalformedURLException ex) {
-            LOGGER.warn("Invalid URL {}", uri, ex);
-        } catch (final UnsupportedEncodingException uee) {
-            LOGGER.warn("Invalid encoding: {}", charsetName, uee);
         }
         return null;
     }
@@ -104,7 +103,7 @@ public final class FileUtils {
 
     /**
      * Asserts that the given directory exists and creates it if necessary.
-     * 
+     *
      * @param dir the directory that shall exist
      * @param createDirectoryIfNotExisting specifies if the directory shall be created if it does not exist.
      * @throws java.io.IOException thrown if the directory could not be created.
@@ -123,18 +122,67 @@ public final class FileUtils {
             throw new IOException("File " + dir + " exists and is not a directory. Unable to create directory.");
         }
     }
-    
+
     /**
      * Creates the parent directories for the given File.
-     * 
+     *
      * @param file
      * @throws IOException
      */
     public static void makeParentDirs(final File file) throws IOException {
-        File parent = Objects.requireNonNull(file, "file").getCanonicalFile().getParentFile();
+        final File parent = Objects.requireNonNull(file, "file").getCanonicalFile().getParentFile();
         if (parent != null) {
             mkdir(parent, true);
         }
     }
 
+    /**
+     * Define file POSIX attribute view on a path/file.
+     *
+     * @param path Target path
+     * @param filePermissions Permissions to apply
+     * @param fileOwner File owner
+     * @param fileGroup File group
+     * @throws IOException If IO error during definition of file attribute view
+     */
+    public static void defineFilePosixAttributeView(final Path path,
+            final Set<PosixFilePermission> filePermissions,
+            final String fileOwner,
+            final String fileGroup) throws IOException {
+        final PosixFileAttributeView view = Files.getFileAttributeView(path, PosixFileAttributeView.class);
+        if (view != null) {
+            final UserPrincipalLookupService lookupService = FileSystems.getDefault()
+                    .getUserPrincipalLookupService();
+            if (fileOwner != null) {
+                final UserPrincipal userPrincipal = lookupService.lookupPrincipalByName(fileOwner);
+                if (userPrincipal != null) {
+                    // If not sudoers member, it will throw Operation not permitted
+                    // Only processes with an effective user ID equal to the user ID
+                    // of the file or with appropriate privileges may change the ownership of a file.
+                    // If _POSIX_CHOWN_RESTRICTED is in effect for path
+                    view.setOwner(userPrincipal);
+                }
+            }
+            if (fileGroup != null) {
+                final GroupPrincipal groupPrincipal = lookupService.lookupPrincipalByGroupName(fileGroup);
+                if (groupPrincipal != null) {
+                    // The current user id should be members of this group,
+                    // if not will raise Operation not permitted
+                    view.setGroup(groupPrincipal);
+                }
+            }
+            if (filePermissions != null) {
+                view.setPermissions(filePermissions);
+            }
+        }
+    }
+
+    /**
+     * Check if POSIX file attribute view is supported on the default FileSystem.
+     *
+     * @return true if POSIX file attribute view supported, false otherwise
+     */
+    public static boolean isFilePosixAttributeViewSupported() {
+        return FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+    }
 }

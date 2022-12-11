@@ -23,6 +23,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -39,7 +40,7 @@ import org.apache.logging.log4j.core.util.IOUtils;
 
 public class HttpURLConnectionManager extends HttpManager {
 
-    private static final Charset CHARSET = Charset.forName("US-ASCII");
+    private static final Charset CHARSET = StandardCharsets.US_ASCII;
 
     private final URL url;
     private final boolean isHttps;
@@ -50,12 +51,12 @@ public class HttpURLConnectionManager extends HttpManager {
     private final SslConfiguration sslConfiguration;
     private final boolean verifyHostname;
 
-    public HttpURLConnectionManager(final Configuration configuration, LoggerContext loggerContext, final String name,
+    public HttpURLConnectionManager(final Configuration configuration, final LoggerContext loggerContext, final String name,
                                     final URL url, final String method, final int connectTimeoutMillis,
                                     final int readTimeoutMillis,
                                     final Property[] headers,
-                                    SslConfiguration sslConfiguration,
-                                    boolean verifyHostname) {
+                                    final SslConfiguration sslConfiguration,
+                                    final boolean verifyHostname) {
         super(configuration, loggerContext, name);
         this.url = url;
         if (!(url.getProtocol().equalsIgnoreCase("http") || url.getProtocol().equalsIgnoreCase("https"))) {
@@ -75,15 +76,21 @@ public class HttpURLConnectionManager extends HttpManager {
 
     @Override
     public void send(final Layout<?> layout, final LogEvent event) throws IOException {
-        HttpURLConnection urlConnection = (HttpURLConnection)url.openConnection();
+        final HttpURLConnection urlConnection = (HttpURLConnection)url.openConnection();
         urlConnection.setAllowUserInteraction(false);
         urlConnection.setDoOutput(true);
         urlConnection.setDoInput(true);
         urlConnection.setRequestMethod(method);
-        if (connectTimeoutMillis > 0) urlConnection.setConnectTimeout(connectTimeoutMillis);
-        if (readTimeoutMillis > 0) urlConnection.setReadTimeout(readTimeoutMillis);
-        if (layout.getContentType() != null) urlConnection.setRequestProperty("Content-Type", layout.getContentType());
-        for (Property header : headers) {
+        if (connectTimeoutMillis > 0) {
+            urlConnection.setConnectTimeout(connectTimeoutMillis);
+        }
+        if (readTimeoutMillis > 0) {
+            urlConnection.setReadTimeout(readTimeoutMillis);
+        }
+        if (layout.getContentType() != null) {
+            urlConnection.setRequestProperty("Content-Type", layout.getContentType());
+        }
+        for (final Property header : headers) {
             urlConnection.setRequestProperty(
                 header.getName(),
                 header.isValueNeedsLookup() ? getConfiguration().getStrSubstitutor().replace(event, header.getValue()) : header.getValue());
@@ -95,19 +102,21 @@ public class HttpURLConnectionManager extends HttpManager {
             ((HttpsURLConnection)urlConnection).setHostnameVerifier(LaxHostnameVerifier.INSTANCE);
         }
 
-        byte[] msg = layout.toByteArray(event);
+        final byte[] msg = layout.toByteArray(event);
         urlConnection.setFixedLengthStreamingMode(msg.length);
         urlConnection.connect();
-        try (OutputStream os = urlConnection.getOutputStream()) {
+        try (final OutputStream os = urlConnection.getOutputStream()) {
             os.write(msg);
         }
 
-        byte[] buffer = new byte[1024];
-        try (InputStream is = urlConnection.getInputStream()) {
-            while (IOUtils.EOF != is.read(buffer));
-        } catch (IOException e) {
-            StringBuilder errorMessage = new StringBuilder();
-            try (InputStream es = urlConnection.getErrorStream()) {
+        final byte[] buffer = new byte[1024];
+        try (final InputStream is = urlConnection.getInputStream()) {
+            while (IOUtils.EOF != is.read(buffer)) {
+                // empty
+            }
+        } catch (final IOException e) {
+            final StringBuilder errorMessage = new StringBuilder();
+            try (final InputStream es = urlConnection.getErrorStream()) {
                 errorMessage.append(urlConnection.getResponseCode());
                 if (urlConnection.getResponseMessage() != null) {
                     errorMessage.append(' ').append(urlConnection.getResponseMessage());
@@ -120,10 +129,11 @@ public class HttpURLConnectionManager extends HttpManager {
                     }
                 }
             }
-            if (urlConnection.getResponseCode() > -1)
+            if (urlConnection.getResponseCode() > -1) {
                 throw new IOException(errorMessage.toString());
-            else
+            } else {
                 throw e;
+            }
         }
     }
 

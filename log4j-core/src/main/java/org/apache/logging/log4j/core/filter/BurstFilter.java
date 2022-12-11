@@ -17,22 +17,22 @@
 
 package org.apache.logging.log4j.core.filter;
 
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.DelayQueue;
-import java.util.concurrent.Delayed;
-import java.util.concurrent.TimeUnit;
-
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
 import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.DelayQueue;
+import java.util.concurrent.Delayed;
+import java.util.concurrent.TimeUnit;
 
 /**
  * The <code>BurstFilter</code> is a logging filter that regulates logging traffic.
@@ -46,14 +46,15 @@ import org.apache.logging.log4j.message.Message;
  * <code>
  * &lt;Console name="console"&gt;<br>
  * &nbsp;&lt;PatternLayout pattern="%-5p %d{dd-MMM-yyyy HH:mm:ss} %x %t %m%n"/&gt;<br>
- * &nbsp;&lt;filters&gt;<br>
- * &nbsp;&nbsp;&lt;Burst level="INFO" rate="16" maxBurst="100"/&gt;<br>
- * &nbsp;&lt;/filters&gt;<br>
+ * &nbsp;&lt;Filters&gt;<br>
+ * &nbsp;&nbsp;&lt;BurstFilter level="INFO" rate="16" maxBurst="100"/&gt;<br>
+ * &nbsp;&lt;/Filters&gt;<br>
  * &lt;/Console&gt;<br>
  * </code><br>
  */
 
-@Plugin(name = "BurstFilter", category = Node.CATEGORY, elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Plugin
 public final class BurstFilter extends AbstractFilter {
 
     private static final long NANOS_IN_SECONDS = 1000000000;
@@ -272,11 +273,7 @@ public final class BurstFilter extends AbstractFilter {
 
             final LogDelay logDelay = (LogDelay) o;
 
-            if (expireTime != logDelay.expireTime) {
-                return false;
-            }
-
-            return true;
+            return expireTime == logDelay.expireTime;
         }
 
         @Override
@@ -285,12 +282,12 @@ public final class BurstFilter extends AbstractFilter {
         }
     }
 
-    @PluginBuilderFactory
+    @PluginFactory
     public static Builder newBuilder() {
         return new Builder();
     }
 
-    public static class Builder implements org.apache.logging.log4j.core.util.Builder<BurstFilter> {
+    public static class Builder extends AbstractFilterBuilder<Builder> implements org.apache.logging.log4j.plugins.util.Builder<BurstFilter> {
 
         @PluginBuilderAttribute
         private Level level = Level.WARN;
@@ -301,14 +298,10 @@ public final class BurstFilter extends AbstractFilter {
         @PluginBuilderAttribute
         private long maxBurst;
 
-        @PluginBuilderAttribute
-        private Result onMatch = Result.NEUTRAL;
-
-        @PluginBuilderAttribute
-        private Result onMismatch = Result.DENY;
-
         /**
          * Sets the logging level to use.
+         * @param level the logging level to use.
+         * @return this
          */
         public Builder setLevel(final Level level) {
             this.level = level;
@@ -316,7 +309,9 @@ public final class BurstFilter extends AbstractFilter {
         }
 
         /**
-         * Sets the average number of events per second to allow. This must be a positive number.
+         * Sets the average number of events per second to allow.
+         * @param rate the average number of events per second to allow. This must be a positive number.
+         * @return this
          */
         public Builder setRate(final float rate) {
             this.rate = rate;
@@ -325,26 +320,12 @@ public final class BurstFilter extends AbstractFilter {
 
         /**
          * Sets the maximum number of events that can occur before events are filtered for exceeding the average rate.
+         * @param maxBurst Sets the maximum number of events that can occur before events are filtered for exceeding the average rate.
          * The default is 10 times the rate.
+         * @return this
          */
         public Builder setMaxBurst(final long maxBurst) {
             this.maxBurst = maxBurst;
-            return this;
-        }
-
-        /**
-         * Sets the Result to return when the filter matches. Defaults to Result.NEUTRAL.
-         */
-        public Builder setOnMatch(final Result onMatch) {
-            this.onMatch = onMatch;
-            return this;
-        }
-
-        /**
-         * Sets the Result to return when the filter does not match. The default is Result.DENY.
-         */
-        public Builder setOnMismatch(final Result onMismatch) {
-            this.onMismatch = onMismatch;
             return this;
         }
 
@@ -356,7 +337,7 @@ public final class BurstFilter extends AbstractFilter {
             if (this.maxBurst <= 0) {
                 this.maxBurst = (long) (this.rate * DEFAULT_RATE_MULTIPLE);
             }
-            return new BurstFilter(this.level, this.rate, this.maxBurst, this.onMatch, this.onMismatch);
+            return new BurstFilter(this.level, this.rate, this.maxBurst, this.getOnMatch(), this.getOnMismatch());
         }
     }
 }

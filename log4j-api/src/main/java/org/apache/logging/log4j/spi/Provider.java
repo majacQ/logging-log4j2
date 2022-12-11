@@ -66,15 +66,15 @@ public class Provider {
         versions = null;
     }
 
-    public Provider(Integer priority, String versions,
-                    Class<? extends LoggerContextFactory> loggerContextFactoryClass) {
+    public Provider(final Integer priority, final String versions,
+                    final Class<? extends LoggerContextFactory> loggerContextFactoryClass) {
         this(priority, versions, loggerContextFactoryClass, null);
     }
 
 
-    public Provider(Integer priority, String versions,
-                    Class<? extends LoggerContextFactory> loggerContextFactoryClass,
-                    Class<? extends ThreadContextMap> threadContextMapClass) {
+    public Provider(final Integer priority, final String versions,
+                    final Class<? extends LoggerContextFactory> loggerContextFactoryClass,
+                    final Class<? extends ThreadContextMap> threadContextMapClass) {
         this.url = null;
         this.classLoader = null;
         this.priority = priority;
@@ -189,10 +189,10 @@ public class Provider {
     public URL getUrl() {
         return url;
     }
-    
+
     @Override
     public String toString() {
-        StringBuilder result = new StringBuilder("Provider[");
+        final StringBuilder result = new StringBuilder("Provider[");
         if (!DEFAULT_PRIORITY.equals(priority)) {
             result.append("priority=").append(priority).append(", ");
         }
@@ -217,5 +217,37 @@ public class Provider {
         }
         result.append("]");
         return result.toString();
+    }
+
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        final Provider provider = (Provider) o;
+
+        if (priority != null ? !priority.equals(provider.priority) : provider.priority != null) {
+            return false;
+        }
+        if (className != null ? !className.equals(provider.className) : provider.className != null) {
+            return false;
+        }
+        if (loggerContextFactoryClass != null ? !loggerContextFactoryClass.equals(provider.loggerContextFactoryClass) : provider.loggerContextFactoryClass != null) {
+            return false;
+        }
+        return versions != null ? versions.equals(provider.versions) : provider.versions == null;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = priority != null ? priority.hashCode() : 0;
+        result = 31 * result + (className != null ? className.hashCode() : 0);
+        result = 31 * result + (loggerContextFactoryClass != null ? loggerContextFactoryClass.hashCode() : 0);
+        result = 31 * result + (versions != null ? versions.hashCode() : 0);
+        return result;
     }
 }

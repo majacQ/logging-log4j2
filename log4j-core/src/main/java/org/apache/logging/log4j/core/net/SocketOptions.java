@@ -16,23 +16,24 @@
  */
 package org.apache.logging.log4j.core.net;
 
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.util.Builder;
+
 import java.net.Socket;
 import java.net.SocketException;
-
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.util.Builder;
 
 /**
  * Holds all socket options settable via {@link Socket} methods.
  */
-@Plugin(name = "SocketOptions", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public class SocketOptions implements Builder<SocketOptions>, Cloneable {
 
-    @PluginBuilderFactory
+    @PluginFactory
     public static SocketOptions newBuilder() {
         return new SocketOptions();
     }
@@ -167,48 +168,59 @@ public class SocketOptions implements Builder<SocketOptions>, Cloneable {
         return tcpNoDelay;
     }
 
-    public void setKeepAlive(final boolean keepAlive) {
+    public SocketOptions setKeepAlive(final boolean keepAlive) {
         this.keepAlive = Boolean.valueOf(keepAlive);
+        return this;
     }
 
-    public void setOobInline(final boolean oobInline) {
+    public SocketOptions setOobInline(final boolean oobInline) {
         this.oobInline = Boolean.valueOf(oobInline);
+        return this;
     }
 
-    public void setPerformancePreferences(final SocketPerformancePreferences performancePreferences) {
+    public SocketOptions setPerformancePreferences(final SocketPerformancePreferences performancePreferences) {
         this.performancePreferences = performancePreferences;
+        return this;
     }
 
-    public void setReceiveBufferSize(final int receiveBufferSize) {
+    public SocketOptions setReceiveBufferSize(final int receiveBufferSize) {
         this.receiveBufferSize = receiveBufferSize;
+        return this;
     }
 
-    public void setReuseAddress(final boolean reuseAddress) {
+    public SocketOptions setReuseAddress(final boolean reuseAddress) {
         this.reuseAddress = Boolean.valueOf(reuseAddress);
+        return this;
     }
 
-    public void setRfc1349TrafficClass(final Rfc1349TrafficClass trafficClass) {
+    public SocketOptions setRfc1349TrafficClass(final Rfc1349TrafficClass trafficClass) {
         this.rfc1349TrafficClass = trafficClass;
+        return this;
     }
 
-    public void setSendBufferSize(final int sendBufferSize) {
+    public SocketOptions setSendBufferSize(final int sendBufferSize) {
         this.sendBufferSize = sendBufferSize;
+        return this;
     }
 
-    public void setSoLinger(final int soLinger) {
+    public SocketOptions setSoLinger(final int soLinger) {
         this.soLinger = soLinger;
+        return this;
     }
 
-    public void setSoTimeout(final int soTimeout) {
+    public SocketOptions setSoTimeout(final int soTimeout) {
         this.soTimeout = soTimeout;
+        return this;
     }
 
-    public void setTcpNoDelay(final boolean tcpNoDelay) {
+    public SocketOptions setTcpNoDelay(final boolean tcpNoDelay) {
         this.tcpNoDelay = Boolean.valueOf(tcpNoDelay);
+        return this;
     }
 
-    public void setTrafficClass(final int trafficClass) {
+    public SocketOptions setTrafficClass(final int trafficClass) {
         this.trafficClass = trafficClass;
+        return this;
     }
 
     @Override
