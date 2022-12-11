@@ -320,7 +320,7 @@
     <hsqldb.version>2.7.1</hsqldb.version>
     <icu4j.version>72.1</icu4j.version>
     <jackson1.version>1.9.13</jackson1.version>
-    <jackson-bom.version>2.13.4.20221013</jackson-bom.version>
+    <jackson-bom.version>2.14.1</jackson-bom.version>
     <!-- Implementation of `jakarta.activation-api` -->
     <jakarta-activation.version>2.0.1</jakarta-activation.version>
     <jakarta-mail.version>2.0.1</jakarta-mail.version>
@@ -342,7 +342,7 @@
     <jeromq.version>0.5.2</jeromq.version>
     <jetty.version>11.0.13</jetty.version>
     <jmdns.version>3.5.8</jmdns.version>
-    <jmh.version>1.35</jmh.version>
+    <jmh.version>1.36</jmh.version>
     <jna.version>5.12.1</jna.version>
     <json-unit.version>2.36.0</json-unit.version>
     <junit.version>4.13.2</junit.version>
@@ -373,8 +373,13 @@
     <pax-exam.version>4.13.5</pax-exam.version>
     <plexus-utils.version>3.4.2</plexus-utils.version>
     <slf4j.version>2.0.5</slf4j.version>
+  <<<<<<< dependabot/maven/org.springframework-spring-framework-bom-6.0.2
     <spring.version>6.0.2</spring.version>
     <spring-boot.version>2.7.5</spring-boot.version>
+  =======
+    <spring.version>5.3.23</spring.version>
+    <spring-boot.version>3.0.0</spring-boot.version>
+  >>>>>>> release-2.x
     <system-stubs.version>2.0.1</system-stubs.version>
     <tomcat-juli.version>10.0.23</tomcat-juli.version>
     <velocity.version>1.7</velocity.version>
