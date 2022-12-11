@@ -371,7 +371,7 @@
     <!-- The OSGi API version MUST always be the MINIMUM version Log4j supports -->
     <osgi.api.version>6.0.0</osgi.api.version>
     <pax-exam.version>4.13.5</pax-exam.version>
-    <plexus-utils.version>3.4.2</plexus-utils.version>
+    <plexus-utils.version>3.5.0</plexus-utils.version>
     <slf4j.version>2.0.5</slf4j.version>
   <<<<<<< dependabot/maven/org.springframework-spring-framework-bom-6.0.2
     <spring.version>6.0.2</spring.version>
