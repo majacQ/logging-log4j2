@@ -266,11 +266,11 @@
     <maven-bundle-plugin.version>5.1.8</maven-bundle-plugin.version>
     <maven-changes-plugin.version>2.12.1</maven-changes-plugin.version>
     <maven-checkstyle-plugin.version>3.2.0</maven-checkstyle-plugin.version>
-    <maven-dependency-plugin.version>3.3.0</maven-dependency-plugin.version>
+    <maven-dependency-plugin.version>3.4.0</maven-dependency-plugin.version>
     <maven-doap-plugin.version>1.2</maven-doap-plugin.version>
     <maven-jxr-plugin.version>3.3.0</maven-jxr-plugin.version>
     <!-- Do not update the pdf plugin version without verifying the new version works by running mvn site -->
-    <maven-pdf-plugin.version>1.2</maven-pdf-plugin.version>
+    <maven-pdf-plugin.version>1.6.1</maven-pdf-plugin.version>
     <maven-pmd-plugin.version>3.19.0</maven-pmd-plugin.version>
     <maven-scm-plugin.version>1.12.2</maven-scm-plugin.version>
     <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
@@ -308,7 +308,7 @@
     <disruptor.version>3.4.4</disruptor.version>
     <elasticsearch.version>7.17.6</elasticsearch.version>
     <embedded-ldap.version>0.9.0</embedded-ldap.version>
-    <embedded-mongo.version>3.5.1</embedded-mongo.version>
+    <embedded-mongo.version>4.2.0</embedded-mongo.version>
     <felix.version>7.0.5</felix.version>
     <flume.version>1.10.1</flume.version>
     <groovy.version>3.0.13</groovy.version>
@@ -340,7 +340,7 @@
     <jctools.version>3.3.0</jctools.version>
     <je.version>18.3.12</je.version>
     <jeromq.version>0.5.2</jeromq.version>
-    <jetty.version>9.4.49.v20220914</jetty.version>
+    <jetty.version>11.0.13</jetty.version>
     <jmdns.version>3.5.8</jmdns.version>
     <jmh.version>1.35</jmh.version>
     <jna.version>5.12.1</jna.version>
@@ -348,20 +348,20 @@
     <junit.version>4.13.2</junit.version>
     <junit-jupiter.version>5.9.1</junit-jupiter.version>
     <junit-pioneer.version>1.6.2</junit-pioneer.version>
-    <kafka.version>1.1.1</kafka.version>
+    <kafka.version>3.3.1</kafka.version>
     <kubernetes-client.version>5.12.2</kubernetes-client.version>
     <lightcouch.version>0.2.0</lightcouch.version>
-    <liquibase.version>3.5.5</liquibase.version>
+    <liquibase.version>4.18.0</liquibase.version>
     <log4j.version>1.2.17</log4j.version>
     <log4j2-cachefile-transformer.version>2.15.0</log4j2-cachefile-transformer.version>
     <log4j2-ecs-layout.version>1.5.0</log4j2-ecs-layout.version>
     <logback.version>1.2.11</logback.version>
     <maven.version>3.8.6</maven.version>
-    <mockito.version>4.8.1</mockito.version>
+    <mockito.version>4.9.0</mockito.version>
     <mongodb.version>4.5.0</mongodb.version>
     <netty.version>4.1.84.Final</netty.version>
     <org.eclipse.osgi.version>3.13.0.v20180226-1711</org.eclipse.osgi.version>
-    <org.eclipse.persistence.version>2.7.11</org.eclipse.persistence.version>
+    <org.eclipse.persistence.version>4.0.0</org.eclipse.persistence.version>
     <oro.version>2.0.8</oro.version>
     <!-- The OSGi API version MUST always be the MINIMUM version Log4j supports -->
     <osgi.api.version>6.0.0</osgi.api.version>
@@ -374,7 +374,7 @@
     <tomcat-juli.version>10.0.23</tomcat-juli.version>
     <velocity.version>1.7</velocity.version>
     <wiremock.version>2.34.0</wiremock.version>
-    <woodstox.version>6.3.1</woodstox.version>
+    <woodstox.version>6.4.0</woodstox.version>
     <xmlunit.version>2.9.0</xmlunit.version>
     <xz.version>1.9</xz.version>
   </properties>
