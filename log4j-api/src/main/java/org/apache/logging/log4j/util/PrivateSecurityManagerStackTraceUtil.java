@@ -23,7 +23,7 @@ import java.util.Deque;
  * Internal utility to share a fast implementation of {@code #getCurrentStackTrace()}
  * with the java 9 implementation of {@link StackLocator}.
  */
-final class PrivateSecurityManagerStackTraceUtil {
+public final class PrivateSecurityManagerStackTraceUtil {
 
     private static final PrivateSecurityManager SECURITY_MANAGER;
 
@@ -61,7 +61,11 @@ final class PrivateSecurityManagerStackTraceUtil {
      * @return the execution stack.
      */
     // benchmarks show that using the SecurityManager is much faster than looping through getCallerClass(int)
+  <<<<<<< ckozak/stack_trace_jmh_benchmark
+    public static Stack<Class<?>> getCurrentStackTrace() {
+  =======
     static Deque<Class<?>> getCurrentStackTrace() {
+  >>>>>>> master
         final Class<?>[] array = SECURITY_MANAGER.getClassContext();
         final Deque<Class<?>> classes = new ArrayDeque<>(array.length);
         for (final Class<?> clazz : array) {
