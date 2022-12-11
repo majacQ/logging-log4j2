@@ -276,7 +276,7 @@
     <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
     <maven-taglib-plugin.version>2.4</maven-taglib-plugin.version>
     <maven-toolchains-plugin.version>3.1.0</maven-toolchains-plugin.version>
-    <spotbugs-maven-plugin.version>4.7.2.1</spotbugs-maven-plugin.version>
+    <spotbugs-maven-plugin.version>4.7.3.0</spotbugs-maven-plugin.version>
     <spotless-maven-plugin.version>2.27.2</spotless-maven-plugin.version>
     <!-- surefire.plugin.version 2.18 yields http://jira.codehaus.org/browse/SUREFIRE-1121, which is fixed in 2.18.1 -->
     <!-- surefire.plugin.version 2.19 yields https://issues.apache.org/jira/browse/SUREFIRE-1193. -->
@@ -310,7 +310,7 @@
     <embedded-ldap.version>0.9.0</embedded-ldap.version>
     <embedded-mongo.version>4.2.0</embedded-mongo.version>
     <felix.version>7.0.5</felix.version>
-    <flume.version>1.10.1</flume.version>
+    <flume.version>1.11.0</flume.version>
     <groovy.version>3.0.13</groovy.version>
     <guava.version>31.1-jre</guava.version>
     <h2.version>2.1.214</h2.version>
@@ -337,7 +337,7 @@
     <jansi.version>2.4.0</jansi.version>
     <java-allocation-instrumenter.version>3.3.0</java-allocation-instrumenter.version>
     <jconsole.version>1.7.0</jconsole.version>
-    <jctools.version>3.3.0</jctools.version>
+    <jctools.version>4.0.1</jctools.version>
     <je.version>18.3.12</je.version>
     <jeromq.version>0.5.2</jeromq.version>
     <jetty.version>11.0.13</jetty.version>
