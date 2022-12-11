@@ -67,17 +67,12 @@ public class SortedArrayStringMap implements IndexedStringMap {
     private static final long serialVersionUID = -5748905872274478116L;
     private static final int HASHVAL = 31;
 
-    private static final TriConsumer<String, Object, StringMap> PUT_ALL = new TriConsumer<String, Object, StringMap>() {
-        @Override
-        public void accept(final String key, final Object value, final StringMap contextData) {
-            contextData.putValue(key, value);
-        }
-    };
+    private static final TriConsumer<String, Object, StringMap> PUT_ALL = (key, value, contextData) -> contextData.putValue(key, value);
 
     /**
      * An empty array instance to share when the table is not inflated.
      */
-    private static final String[] EMPTY = {};
+    private static final String[] EMPTY = Strings.EMPTY_ARRAY;
     private static final String FROZEN = "Frozen collection cannot be modified";
 
     private transient String[] keys = EMPTY;
@@ -96,7 +91,7 @@ public class SortedArrayStringMap implements IndexedStringMap {
         Method[] methods = ObjectInputStream.class.getMethods();
         Method setMethod = null;
         Method getMethod = null;
-        for (Method method : methods) {
+        for (final Method method : methods) {
             if (method.getName().equals("setObjectInputFilter")) {
                 setMethod = method;
             } else if (method.getName().equals("getObjectInputFilter")) {
@@ -106,16 +101,16 @@ public class SortedArrayStringMap implements IndexedStringMap {
         Method newMethod = null;
         try {
             if (setMethod != null) {
-                Class<?> clazz = Class.forName("org.apache.logging.log4j.util.internal.DefaultObjectInputFilter");
+                final Class<?> clazz = Class.forName("org.apache.logging.log4j.internal.DefaultObjectInputFilter");
                 methods = clazz.getMethods();
-                for (Method method : methods) {
+                for (final Method method : methods) {
                     if (method.getName().equals("newInstance") && Modifier.isStatic(method.getModifiers())) {
                         newMethod = method;
                         break;
                     }
                 }
             }
-        } catch (ClassNotFoundException ex) {
+        } catch (final ClassNotFoundException ex) {
             // Ignore the exception
         }
         newObjectInputFilter = newMethod;
@@ -156,8 +151,17 @@ public class SortedArrayStringMap implements IndexedStringMap {
     public SortedArrayStringMap(final Map<String, ?> map) {
         resize(ceilingNextPowerOfTwo(map.size()));
         for (final Map.Entry<String, ?> entry : map.entrySet()) {
-            putValue(entry.getKey(), entry.getValue());
+            // The key might not actually be a String.
+            putValue(Objects.toString(entry.getKey(), null), entry.getValue());
         }
+    }
+
+    /**
+     * For unit testing.
+     * @return The threshold.
+     */
+    public int getThreshold() {
+        return threshold;
     }
 
     private void assertNotFrozen() {
@@ -502,6 +506,9 @@ public class SortedArrayStringMap implements IndexedStringMap {
      * Save the state of the {@code SortedArrayStringMap} instance to a stream (i.e.,
      * serialize it).
      *
+     * @param s The ObjectOutputStream.
+     * @throws IOException if there is an error serializing the object to the stream.
+     *
      * @serialData The <i>capacity</i> of the SortedArrayStringMap (the length of the
      *             bucket array) is emitted (int), followed by the
      *             <i>size</i> (an int, the number of key-value
@@ -542,28 +549,29 @@ public class SortedArrayStringMap implements IndexedStringMap {
             return null;
         }
         final ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        try (ObjectOutputStream oos = new ObjectOutputStream(bout)) {
+        try (final ObjectOutputStream oos = new ObjectOutputStream(bout)) {
             oos.writeObject(obj);
             oos.flush();
             return bout.toByteArray();
         }
     }
 
-    private static Object unmarshall(final byte[] data, ObjectInputStream inputStream)
+    @SuppressWarnings("BanSerializableRead")
+    private static Object unmarshall(final byte[] data, final ObjectInputStream inputStream)
             throws IOException, ClassNotFoundException {
         final ByteArrayInputStream bin = new ByteArrayInputStream(data);
         Collection<String> allowedClasses = null;
-        ObjectInputStream ois;
+        final ObjectInputStream ois;
         if (inputStream instanceof FilteredObjectInputStream) {
             allowedClasses = ((FilteredObjectInputStream) inputStream).getAllowedClasses();
             ois = new FilteredObjectInputStream(bin, allowedClasses);
         } else {
             try {
-                Object obj = getObjectInputFilter.invoke(inputStream);
-                Object filter = newObjectInputFilter.invoke(null, obj);
+                final Object obj = getObjectInputFilter.invoke(inputStream);
+                final Object filter = newObjectInputFilter.invoke(null, obj);
                 ois = new ObjectInputStream(bin);
                 setObjectInputFilter.invoke(ois, filter);
-            } catch (IllegalAccessException | InvocationTargetException ex) {
+            } catch (final IllegalAccessException | InvocationTargetException ex) {
                 throw new StreamCorruptedException("Unable to set ObjectInputFilter on stream");
             }
         }
@@ -590,6 +598,9 @@ public class SortedArrayStringMap implements IndexedStringMap {
     /**
      * Reconstitute the {@code SortedArrayStringMap} instance from a stream (i.e.,
      * deserialize it).
+     * @param s The ObjectInputStream.
+     * @throws IOException If there is an error reading the input stream.
+     * @throws ClassNotFoundException if the class to be instantiated could not be found.
      */
     private void readObject(final java.io.ObjectInputStream s)  throws IOException, ClassNotFoundException {
         if (!(s instanceof FilteredObjectInputStream) && setObjectInputFilter == null) {

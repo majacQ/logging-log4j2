@@ -16,8 +16,6 @@
  */
 package org.apache.logging.log4j.core.config.composite;
 
-import java.io.File;
-import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,68 +27,54 @@ import org.apache.logging.log4j.core.config.AbstractConfiguration;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationFactory;
 import org.apache.logging.log4j.core.config.ConfigurationSource;
-import org.apache.logging.log4j.core.config.ConfiguratonFileWatcher;
-import org.apache.logging.log4j.core.config.Node;
 import org.apache.logging.log4j.core.config.Reconfigurable;
-import org.apache.logging.log4j.core.config.plugins.util.ResolverUtil;
 import org.apache.logging.log4j.core.config.status.StatusConfiguration;
-import org.apache.logging.log4j.core.util.FileWatcher;
 import org.apache.logging.log4j.core.util.Patterns;
+import org.apache.logging.log4j.core.util.Source;
 import org.apache.logging.log4j.core.util.WatchManager;
-import org.apache.logging.log4j.util.LoaderUtil;
-import org.apache.logging.log4j.util.PropertiesUtil;
+import org.apache.logging.log4j.core.util.Watcher;
+import org.apache.logging.log4j.plugins.Node;
+import org.apache.logging.log4j.plugins.util.ResolverUtil;
 
 /**
  * A Composite Configuration.
  */
 public class CompositeConfiguration extends AbstractConfiguration implements Reconfigurable {
 
-    /**
-     * Allow the ConfigurationFactory class to be specified as a system property.
-     */
-    public static final String MERGE_STRATEGY_PROPERTY = "log4j.mergeStrategy";
-
     private static final String[] VERBOSE_CLASSES = new String[] {ResolverUtil.class.getName()};
 
     private final List<? extends AbstractConfiguration> configurations;
 
-    private MergeStrategy mergeStrategy;
+    private final MergeStrategy mergeStrategy;
 
     /**
-     * Construct the ComponsiteConfiguration.
+     * Construct the CompositeConfiguration.
      *
      * @param configurations The List of Configurations to merge.
      */
     public CompositeConfiguration(final List<? extends AbstractConfiguration> configurations) {
-        super(configurations.get(0).getLoggerContext(), ConfigurationSource.NULL_SOURCE);
+        super(configurations.get(0).getLoggerContext(), ConfigurationSource.COMPOSITE_SOURCE);
         rootNode = configurations.get(0).getRootNode();
         this.configurations = configurations;
-        final String mergeStrategyClassName = PropertiesUtil.getProperties().getStringProperty(MERGE_STRATEGY_PROPERTY,
-                DefaultMergeStrategy.class.getName());
-        try {
-            mergeStrategy = LoaderUtil.newInstanceOf(mergeStrategyClassName);
-        } catch (ClassNotFoundException | IllegalAccessException | NoSuchMethodException | InvocationTargetException |
-                InstantiationException ex) {
-            mergeStrategy = new DefaultMergeStrategy();
-        }
+        mergeStrategy = getComponent(MergeStrategy.KEY);
         for (final AbstractConfiguration config : configurations) {
             mergeStrategy.mergeRootProperties(rootNode, config);
         }
-        final StatusConfiguration statusConfig = new StatusConfiguration().withVerboseClasses(VERBOSE_CLASSES)
-                .withStatus(getDefaultStatus());
+        final StatusConfiguration statusConfig = new StatusConfiguration().setVerboseClasses(VERBOSE_CLASSES)
+                .setStatus(getDefaultStatus());
         for (final Map.Entry<String, String> entry : rootNode.getAttributes().entrySet()) {
             final String key = entry.getKey();
-            final String value = getStrSubstitutor().replace(entry.getValue());
+            final String value = getConfigurationStrSubstitutor().replace(entry.getValue());
             if ("status".equalsIgnoreCase(key)) {
-                statusConfig.withStatus(value.toUpperCase());
+                statusConfig.setStatus(value.toUpperCase());
             } else if ("dest".equalsIgnoreCase(key)) {
-                statusConfig.withDestination(value);
+                statusConfig.setDestination(value);
             } else if ("shutdownHook".equalsIgnoreCase(key)) {
                 isShutdownHookEnabled = !"disable".equalsIgnoreCase(value);
             } else if ("shutdownTimeout".equalsIgnoreCase(key)) {
                 shutdownTimeoutMillis = Long.parseLong(value);
             } else if ("verbose".equalsIgnoreCase(key)) {
-                statusConfig.withVerbosity(value);
+                statusConfig.setVerbosity(value);
             } else if ("packages".equalsIgnoreCase(key)) {
                 pluginPackages.addAll(Arrays.asList(value.split(Patterns.COMMA_SEPARATOR)));
             } else if ("name".equalsIgnoreCase(key)) {
@@ -106,20 +90,18 @@ public class CompositeConfiguration extends AbstractConfiguration implements Rec
         staffChildConfiguration(targetConfiguration);
         final WatchManager watchManager = getWatchManager();
         final WatchManager targetWatchManager = targetConfiguration.getWatchManager();
-        final FileWatcher fileWatcher = new ConfiguratonFileWatcher(this, listeners);
         if (targetWatchManager.getIntervalSeconds() > 0) {
             watchManager.setIntervalSeconds(targetWatchManager.getIntervalSeconds());
-            final Map<File, FileWatcher> watchers = targetWatchManager.getWatchers();
-            for (final Map.Entry<File, FileWatcher> entry : watchers.entrySet()) {
-                if (entry.getValue() instanceof ConfiguratonFileWatcher) {
-                    watchManager.watchFile(entry.getKey(), fileWatcher);
-                }
+            final Map<Source, Watcher> watchers = targetWatchManager.getConfigurationWatchers();
+            for (final Map.Entry<Source, Watcher> entry : watchers.entrySet()) {
+                watchManager.watch(entry.getKey(), entry.getValue().newWatcher(this, listeners,
+                        entry.getValue().getLastModified()));
             }
         }
         for (final AbstractConfiguration sourceConfiguration : configurations.subList(1, configurations.size())) {
             staffChildConfiguration(sourceConfiguration);
             final Node sourceRoot = sourceConfiguration.getRootNode();
-            mergeStrategy.mergConfigurations(rootNode, sourceRoot, getPluginManager());
+            mergeStrategy.mergeConfigurations(rootNode, sourceRoot, corePlugins);
             if (LOGGER.isEnabled(Level.ALL)) {
                 final StringBuilder sb = new StringBuilder();
                 printNodes("", rootNode, sb);
@@ -132,11 +114,10 @@ public class CompositeConfiguration extends AbstractConfiguration implements Rec
                     watchManager.setIntervalSeconds(monitorInterval);
                 }
                 final WatchManager sourceWatchManager = sourceConfiguration.getWatchManager();
-                final Map<File, FileWatcher> watchers = sourceWatchManager.getWatchers();
-                for (final Map.Entry<File, FileWatcher> entry : watchers.entrySet()) {
-                    if (entry.getValue() instanceof ConfiguratonFileWatcher) {
-                        watchManager.watchFile(entry.getKey(), fileWatcher);
-                    }
+                final Map<Source, Watcher> watchers = sourceWatchManager.getConfigurationWatchers();
+                for (final Map.Entry<Source, Watcher> entry : watchers.entrySet()) {
+                    watchManager.watch(entry.getKey(), entry.getValue().newWatcher(this, listeners,
+                            entry.getValue().getLastModified()));
                 }
             }
         }
@@ -146,7 +127,7 @@ public class CompositeConfiguration extends AbstractConfiguration implements Rec
     public Configuration reconfigure() {
         LOGGER.debug("Reconfiguring composite configuration");
         final List<AbstractConfiguration> configs = new ArrayList<>();
-        final ConfigurationFactory factory = ConfigurationFactory.getInstance();
+        final ConfigurationFactory factory = injector.getInstance(ConfigurationFactory.KEY);
         for (final AbstractConfiguration config : configurations) {
             final ConfigurationSource source = config.getConfigurationSource();
             final URI sourceURI = source.getURI();
@@ -168,7 +149,7 @@ public class CompositeConfiguration extends AbstractConfiguration implements Rec
     }
 
     private void staffChildConfiguration(final AbstractConfiguration childConfiguration) {
-        childConfiguration.setPluginManager(pluginManager);
+        childConfiguration.setCorePlugins(corePlugins);
         childConfiguration.setScriptManager(scriptManager);
         childConfiguration.setup();
     }
@@ -185,7 +166,7 @@ public class CompositeConfiguration extends AbstractConfiguration implements Rec
     public String toString() {
         return getClass().getName() + "@" + Integer.toHexString(hashCode()) + " [configurations=" + configurations
                 + ", mergeStrategy=" + mergeStrategy + ", rootNode=" + rootNode + ", listeners=" + listeners
-                + ", pluginPackages=" + pluginPackages + ", pluginManager=" + pluginManager + ", isShutdownHookEnabled="
+                + ", pluginPackages=" + pluginPackages + ", corePlugins=" + corePlugins + ", isShutdownHookEnabled="
                 + isShutdownHookEnabled + ", shutdownTimeoutMillis=" + shutdownTimeoutMillis + ", scriptManager="
                 + scriptManager + "]";
     }

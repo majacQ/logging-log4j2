@@ -16,19 +16,13 @@
  */
 package org.apache.logging.log4j.core.util;
 
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.security.SecureRandom;
-import java.util.Enumeration;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.status.StatusLogger;
+import org.apache.logging.log4j.core.impl.Log4jProperties;
 import org.apache.logging.log4j.util.PropertiesUtil;
 
 /**
@@ -36,12 +30,6 @@ import org.apache.logging.log4j.util.PropertiesUtil;
  * less than 10,000 IDs are generated per millisecond on the same device (as identified by its MAC address).
  */
 public final class UuidUtil {
-    /**
-     * System property that may be used to seed the UUID generation with an integer value.
-     */
-    public static final String UUID_SEQUENCE = "org.apache.logging.log4j.uuidSequence";
-
-    private static final Logger LOGGER = StatusLogger.getLogger();
 
     private static final String ASSIGNED_SEQUENCES = "org.apache.logging.log4j.assignedSequences";
 
@@ -50,9 +38,7 @@ public final class UuidUtil {
     private static final byte VARIANT = (byte) 0x80;
     private static final int SEQUENCE_MASK = 0x3FFF;
     private static final long NUM_100NS_INTERVALS_SINCE_UUID_EPOCH = 0x01b21dd213814000L;
-    private static final long INITIAL_UUID_SEQNO = PropertiesUtil.getProperties().getLongProperty(UUID_SEQUENCE, 0);
-
-    private static final long LEAST;
+    private static final long INITIAL_UUID_SEQNO = PropertiesUtil.getProperties().getLongProperty(Log4jProperties.UUID_SEQUENCE, 0);
 
     private static final long LOW_MASK = 0xffffffffL;
     private static final long MID_MASK = 0xffff00000000L;
@@ -63,14 +49,25 @@ public final class UuidUtil {
     private static final int SHIFT_6 = 48;
     private static final int HUNDRED_NANOS_PER_MILLI = 10000;
 
-    static {
-        byte[] mac = getLocalMacAddress();
+    private static final long LEAST = initialize(NetUtils.getMacAddress());
+
+    /* This class cannot be instantiated */
+    private UuidUtil() {
+    }
+
+    /**
+     * Initializes this class
+     *
+     * @param mac MAC address
+     * @return Least
+     */
+    static long initialize(byte[] mac) {
         final Random randomGenerator = new SecureRandom();
         if (mac == null || mac.length == 0) {
             mac = new byte[6];
             randomGenerator.nextBytes(mac);
         }
-        final int length = mac.length >= 6 ? 6 : mac.length;
+        final int length = Math.min(mac.length, 6);
         final int index = mac.length >= 6 ? mac.length - 6 : 0;
         final byte[] node = new byte[NODE_SIZE];
         node[0] = VARIANT;
@@ -78,11 +75,11 @@ public final class UuidUtil {
         for (int i = 2; i < NODE_SIZE; ++i) {
             node[i] = 0;
         }
-        System.arraycopy(mac, index, node, index + 2, length);
+        System.arraycopy(mac, index, node, 2, length);
         final ByteBuffer buf = ByteBuffer.wrap(node);
         long rand = INITIAL_UUID_SEQNO;
         String assigned = PropertiesUtil.getProperties().getStringProperty(ASSIGNED_SEQUENCES);
-        long[] sequences;
+        final long[] sequences;
         if (assigned == null) {
             sequences = new long[0];
         } else {
@@ -114,12 +111,7 @@ public final class UuidUtil {
         assigned = assigned == null ? Long.toString(rand) : assigned + ',' + Long.toString(rand);
         System.setProperty(ASSIGNED_SEQUENCES, assigned);
 
-        LEAST = buf.getLong() | rand << SHIFT_6;
-    }
-
-
-    /* This class cannot be instantiated */
-    private UuidUtil() {
+        return buf.getLong() | rand << SHIFT_6;
     }
 
     /**
@@ -148,46 +140,4 @@ public final class UuidUtil {
         final long most = timeLow | timeMid | TYPE1 | timeHi;
         return new UUID(most, LEAST);
     }
-
-    /**
-     * Returns the local network interface's MAC address if possible. The local network interface is defined here as
-     * the {@link java.net.NetworkInterface} that is both up and not a loopback interface.
-     *
-     * @return the MAC address of the local network interface or {@code null} if no MAC address could be determined.
-     * @since 2.1
-     */
-    private static byte[] getLocalMacAddress() {
-        byte[] mac = null;
-        try {
-            final InetAddress localHost = InetAddress.getLocalHost();
-            try {
-                final NetworkInterface localInterface = NetworkInterface.getByInetAddress(localHost);
-                if (isUpAndNotLoopback(localInterface)) {
-                    mac = localInterface.getHardwareAddress();
-                }
-                if (mac == null) {
-                    final Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-                    while (networkInterfaces.hasMoreElements() && mac == null) {
-                        final NetworkInterface nic = networkInterfaces.nextElement();
-                        if (isUpAndNotLoopback(nic)) {
-                            mac = nic.getHardwareAddress();
-                        }
-                    }
-                }
-            } catch (final SocketException e) {
-                LOGGER.catching(e);
-            }
-            if (mac == null || mac.length == 0) {
-                mac = localHost.getAddress();
-            }
-        } catch (final UnknownHostException ignored) {
-            // ignored
-        }
-        return mac;
-    }
-
-    private static boolean isUpAndNotLoopback(final NetworkInterface ni) throws SocketException {
-        return ni != null && !ni.isLoopback() && ni.isUp();
-    }
 }
-

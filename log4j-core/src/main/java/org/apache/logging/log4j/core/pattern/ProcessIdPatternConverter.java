@@ -17,10 +17,12 @@
 package org.apache.logging.log4j.core.pattern;
 
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.util.ProcessIdUtil;
+import org.apache.logging.log4j.core.util.ProcessIdUtil;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.Plugin;
 
-@Plugin(name = "ProcessIdPatternConverter", category = "Converter")
+@Namespace("Converter")
+@Plugin("ProcessIdPatternConverter")
 @ConverterKeys({ "pid", "processId" })
 public final class ProcessIdPatternConverter extends LogEventPatternConverter {
     private static final String DEFAULT_DEFAULT_VALUE = "???";
@@ -32,7 +34,7 @@ public final class ProcessIdPatternConverter extends LogEventPatternConverter {
     private ProcessIdPatternConverter(final String... options) {
         super("Process ID", "pid");
         final String defaultValue = options.length > 0 ? options[0] : DEFAULT_DEFAULT_VALUE;
-        String discoveredPid = ProcessIdUtil.getProcessId();
+        final String discoveredPid = ProcessIdUtil.getProcessId();
         pid = discoveredPid.equals(ProcessIdUtil.DEFAULT_PROCESSID) ? defaultValue : discoveredPid;
     }
 

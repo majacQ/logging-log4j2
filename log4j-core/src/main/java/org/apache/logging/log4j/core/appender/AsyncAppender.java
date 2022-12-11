@@ -16,17 +16,7 @@
  */
 package org.apache.logging.log4j.core.appender;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TransferQueue;
-import java.util.concurrent.atomic.AtomicLong;
-
-import org.apache.logging.log4j.core.AbstractLogEvent;
 import org.apache.logging.log4j.core.Appender;
-import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.async.ArrayBlockingQueueFactory;
@@ -41,30 +31,36 @@ import org.apache.logging.log4j.core.config.AppenderControl;
 import org.apache.logging.log4j.core.config.AppenderRef;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationException;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAliases;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
 import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.Required;
+import org.apache.logging.log4j.core.filter.AbstractFilterable;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
-import org.apache.logging.log4j.core.util.Log4jThread;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAliases;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.validation.constraints.Required;
 import org.apache.logging.log4j.spi.AbstractLogger;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TransferQueue;
 
 /**
  * Appends to one or more Appenders asynchronously. You can configure an AsyncAppender with one or more Appenders and an
  * Appender to append to if the queue is full. The AsyncAppender does not allow a filter to be specified on the Appender
  * references.
  */
-@Plugin(name = "Async", category = Core.CATEGORY_NAME, elementType = Appender.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Appender.ELEMENT_TYPE, printObject = true)
+@Plugin("Async")
 public final class AsyncAppender extends AbstractAppender {
 
     private static final int DEFAULT_QUEUE_SIZE = 1024;
-    private static final LogEvent SHUTDOWN_LOG_EVENT = new AbstractLogEvent() {
-    };
-
-    private static final AtomicLong THREAD_SEQUENCE = new AtomicLong(1);
 
     private final BlockingQueue<LogEvent> queue;
     private final int queueSize;
@@ -75,14 +71,14 @@ public final class AsyncAppender extends AbstractAppender {
     private final String errorRef;
     private final boolean includeLocation;
     private AppenderControl errorAppender;
-    private AsyncThread thread;
+    private AsyncAppenderEventDispatcher dispatcher;
     private AsyncQueueFullPolicy asyncQueueFullPolicy;
 
     private AsyncAppender(final String name, final Filter filter, final AppenderRef[] appenderRefs,
-                          final String errorRef, final int queueSize, final boolean blocking,
-                          final boolean ignoreExceptions, final long shutdownTimeout, final Configuration config,
-                          final boolean includeLocation, final BlockingQueueFactory<LogEvent> blockingQueueFactory) {
-        super(name, filter, null, ignoreExceptions);
+            final String errorRef, final int queueSize, final boolean blocking, final boolean ignoreExceptions,
+            final long shutdownTimeout, final Configuration config, final boolean includeLocation,
+            final BlockingQueueFactory<LogEvent> blockingQueueFactory, final Property[] properties) {
+        super(name, filter, null, ignoreExceptions, properties);
         this.queue = blockingQueueFactory.create(queueSize);
         this.queueSize = queueSize;
         this.blocking = blocking;
@@ -114,14 +110,14 @@ public final class AsyncAppender extends AbstractAppender {
             }
         }
         if (appenders.size() > 0) {
-            thread = new AsyncThread(appenders, queue);
-            thread.setName("AsyncAppender-" + getName());
+            dispatcher = new AsyncAppenderEventDispatcher(
+                    getName(), errorAppender, appenders, queue);
         } else if (errorRef == null) {
             throw new ConfigurationException("No appenders are available for AsyncAppender " + getName());
         }
         asyncQueueFullPolicy = AsyncQueueFullPolicyFactory.create();
 
-        thread.start();
+        dispatcher.start();
         super.start();
     }
 
@@ -130,10 +126,11 @@ public final class AsyncAppender extends AbstractAppender {
         setStopping();
         super.stop(timeout, timeUnit, false);
         LOGGER.trace("AsyncAppender stopping. Queue still has {} events.", queue.size());
-        thread.shutdown();
         try {
-            thread.join(shutdownTimeout);
-        } catch (final InterruptedException ex) {
+            dispatcher.stop(shutdownTimeout);
+        } catch (final InterruptedException ignored) {
+            // Restore the interrupted flag cleared when the exception is caught.
+            Thread.currentThread().interrupt();
             LOGGER.warn("Interrupted while stopping AsyncAppender {}", getName());
         }
         LOGGER.trace("AsyncAppender stopped. Queue has {} events.", queue.size());
@@ -166,7 +163,7 @@ public final class AsyncAppender extends AbstractAppender {
                     logMessageInCurrentThread(logEvent);
                 } else {
                     // delegate to the event router (which may discard, enqueue and block, or log in current thread)
-                    final EventRoute route = asyncQueueFullPolicy.getRoute(thread.getId(), memento.getLevel());
+                    final EventRoute route = asyncQueueFullPolicy.getRoute(dispatcher.getId(), memento.getLevel());
                     route.logMessage(this, memento);
                 }
             } else {
@@ -189,8 +186,7 @@ public final class AsyncAppender extends AbstractAppender {
      */
     public void logMessageInCurrentThread(final LogEvent logEvent) {
         logEvent.setEndOfBatch(queue.isEmpty());
-        final boolean appendSuccessful = thread.callAppenders(logEvent);
-        logToErrorAppenderIfNecessary(appendSuccessful, logEvent);
+        dispatcher.dispatch(logEvent);
     }
 
     /**
@@ -202,7 +198,7 @@ public final class AsyncAppender extends AbstractAppender {
         try {
             // wait for free slots in the queue
             queue.put(logEvent);
-        } catch (final InterruptedException e) {
+        } catch (final InterruptedException ignored) {
             final boolean appendSuccessful = handleInterruptedException(logEvent);
             logToErrorAppenderIfNecessary(appendSuccessful, logEvent);
         }
@@ -236,49 +232,13 @@ public final class AsyncAppender extends AbstractAppender {
         }
     }
 
-    /**
-     * Create an AsyncAppender. This method is retained for backwards compatibility. New code should use the
-     * {@link Builder} instead. This factory will use {@link ArrayBlockingQueueFactory} by default as was the behavior
-     * pre-2.7.
-     *
-     * @param appenderRefs     The Appenders to reference.
-     * @param errorRef         An optional Appender to write to if the queue is full or other errors occur.
-     * @param blocking         True if the Appender should wait when the queue is full. The default is true.
-     * @param shutdownTimeout  How many milliseconds the Appender should wait to flush outstanding log events
-     *                         in the queue on shutdown. The default is zero which means to wait forever.
-     * @param size             The size of the event queue. The default is 128.
-     * @param name             The name of the Appender.
-     * @param includeLocation  whether to include location information. The default is false.
-     * @param filter           The Filter or null.
-     * @param config           The Configuration.
-     * @param ignoreExceptions If {@code "true"} (default) exceptions encountered when appending events are logged;
-     *                         otherwise they are propagated to the caller.
-     * @return The AsyncAppender.
-     * @deprecated use {@link Builder} instead
-     */
-    @Deprecated
-    public static AsyncAppender createAppender(final AppenderRef[] appenderRefs, final String errorRef,
-                                               final boolean blocking, final long shutdownTimeout, final int size,
-                                               final String name, final boolean includeLocation, final Filter filter,
-                                               final Configuration config, final boolean ignoreExceptions) {
-        if (name == null) {
-            LOGGER.error("No name provided for AsyncAppender");
-            return null;
-        }
-        if (appenderRefs == null) {
-            LOGGER.error("No appender references provided to AsyncAppender {}", name);
-        }
-
-        return new AsyncAppender(name, filter, appenderRefs, errorRef, size, blocking, ignoreExceptions,
-            shutdownTimeout, config, includeLocation, new ArrayBlockingQueueFactory<LogEvent>());
-    }
-
     @PluginBuilderFactory
     public static Builder newBuilder() {
         return new Builder();
     }
 
-    public static class Builder implements org.apache.logging.log4j.core.util.Builder<AsyncAppender> {
+    public static class Builder<B extends Builder<B>> extends AbstractFilterable.Builder<B>
+            implements org.apache.logging.log4j.core.util.Builder<AsyncAppender> {
 
         @PluginElement("AppenderRef")
         @Required(message = "No appender references provided to AsyncAppender")
@@ -303,9 +263,6 @@ public final class AsyncAppender extends AbstractAppender {
 
         @PluginBuilderAttribute
         private boolean includeLocation = false;
-
-        @PluginElement("Filter")
-        private Filter filter;
 
         @PluginConfiguration
         private Configuration configuration;
@@ -351,11 +308,6 @@ public final class AsyncAppender extends AbstractAppender {
             return this;
         }
 
-        public Builder setFilter(final Filter filter) {
-            this.filter = filter;
-            return this;
-        }
-
         public Builder setConfiguration(final Configuration configuration) {
             this.configuration = configuration;
             return this;
@@ -373,105 +325,8 @@ public final class AsyncAppender extends AbstractAppender {
 
         @Override
         public AsyncAppender build() {
-            return new AsyncAppender(name, filter, appenderRefs, errorRef, bufferSize, blocking, ignoreExceptions,
-                shutdownTimeout, configuration, includeLocation, blockingQueueFactory);
-        }
-    }
-
-    /**
-     * Thread that calls the Appenders.
-     */
-    private class AsyncThread extends Log4jThread {
-
-        private volatile boolean shutdown = false;
-        private final List<AppenderControl> appenders;
-        private final BlockingQueue<LogEvent> queue;
-
-        public AsyncThread(final List<AppenderControl> appenders, final BlockingQueue<LogEvent> queue) {
-            super("AsyncAppender-" + THREAD_SEQUENCE.getAndIncrement());
-            this.appenders = appenders;
-            this.queue = queue;
-            setDaemon(true);
-        }
-
-        @Override
-        public void run() {
-            while (!shutdown) {
-                LogEvent event;
-                try {
-                    event = queue.take();
-                    if (event == SHUTDOWN_LOG_EVENT) {
-                        shutdown = true;
-                        continue;
-                    }
-                } catch (final InterruptedException ex) {
-                    break; // LOG4J2-830
-                }
-                event.setEndOfBatch(queue.isEmpty());
-                final boolean success = callAppenders(event);
-                if (!success && errorAppender != null) {
-                    try {
-                        errorAppender.callAppender(event);
-                    } catch (final Exception ex) {
-                        // Silently accept the error.
-                    }
-                }
-            }
-            // Process any remaining items in the queue.
-            LOGGER.trace("AsyncAppender.AsyncThread shutting down. Processing remaining {} queue events.",
-                queue.size());
-            int count = 0;
-            int ignored = 0;
-            while (!queue.isEmpty()) {
-                try {
-                    final LogEvent event = queue.take();
-                    if (event instanceof Log4jLogEvent) {
-                        final Log4jLogEvent logEvent = (Log4jLogEvent) event;
-                        logEvent.setEndOfBatch(queue.isEmpty());
-                        callAppenders(logEvent);
-                        count++;
-                    } else {
-                        ignored++;
-                        LOGGER.trace("Ignoring event of class {}", event.getClass().getName());
-                    }
-                } catch (final InterruptedException ex) {
-                    // May have been interrupted to shut down.
-                    // Here we ignore interrupts and try to process all remaining events.
-                }
-            }
-            LOGGER.trace("AsyncAppender.AsyncThread stopped. Queue has {} events remaining. "
-                + "Processed {} and ignored {} events since shutdown started.", queue.size(), count, ignored);
-        }
-
-        /**
-         * Calls {@link AppenderControl#callAppender(LogEvent) callAppender} on all registered {@code AppenderControl}
-         * objects, and returns {@code true} if at least one appender call was successful, {@code false} otherwise. Any
-         * exceptions are silently ignored.
-         *
-         * @param event the event to forward to the registered appenders
-         * @return {@code true} if at least one appender call succeeded, {@code false} otherwise
-         */
-        boolean callAppenders(final LogEvent event) {
-            boolean success = false;
-            for (final AppenderControl control : appenders) {
-                try {
-                    control.callAppender(event);
-                    success = true;
-                } catch (final Exception ex) {
-                    // If no appender is successful the error appender will get it.
-                }
-            }
-            return success;
-        }
-
-        public void shutdown() {
-            shutdown = true;
-            if (queue.isEmpty()) {
-                queue.offer(SHUTDOWN_LOG_EVENT);
-            }
-            if (getState() == State.TIMED_WAITING || getState() == State.WAITING) {
-                this.interrupt(); // LOG4J2-1422: if underlying appender is stuck in wait/sleep/join/park call
-            }
+            return new AsyncAppender(name, getFilter(), appenderRefs, errorRef, bufferSize, blocking, ignoreExceptions,
+                shutdownTimeout, configuration, includeLocation, blockingQueueFactory, getPropertyArray());
         }
     }
 
@@ -527,11 +382,12 @@ public final class AsyncAppender extends AbstractAppender {
 
     /**
      * Returns the number of elements in the queue.
-     * 
-     * @return the number of elements in the queue. 
+     *
+     * @return the number of elements in the queue.
      * @since 2.11.1
      */
     public int getQueueSize() {
         return queue.size();
     }
+
 }

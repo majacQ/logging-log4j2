@@ -14,7 +14,6 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j;
 
 import java.io.Serializable;
@@ -28,21 +27,19 @@ import java.util.NoSuchElementException;
 
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.logging.log4j.spi.DefaultThreadContextMap;
-import org.apache.logging.log4j.spi.DefaultThreadContextStack;
-import org.apache.logging.log4j.spi.NoOpThreadContextMap;
+import org.apache.logging.log4j.spi.LoggingSystem;
+import org.apache.logging.log4j.spi.LoggingSystemProperties;
 import org.apache.logging.log4j.spi.ReadOnlyThreadContextMap;
 import org.apache.logging.log4j.spi.ThreadContextMap;
-import org.apache.logging.log4j.spi.ThreadContextMap2;
-import org.apache.logging.log4j.spi.CleanableThreadContextMap;
-import org.apache.logging.log4j.spi.ThreadContextMapFactory;
 import org.apache.logging.log4j.spi.ThreadContextStack;
-import org.apache.logging.log4j.util.PropertiesUtil;
+import org.apache.logging.log4j.util.InternalApi;
 
 /**
  * The ThreadContext allows applications to store information either in a Map or a Stack.
  * <p>
  * <b><em>The MDC is managed on a per thread basis</em></b>. To enable automatic inheritance of <i>copies</i> of the MDC
- * to newly created threads, enable the {@value DefaultThreadContextMap#INHERITABLE_MAP} Log4j system property.
+ * to newly created threads, enable the {@value LoggingSystemProperties#THREAD_CONTEXT_MAP_INHERITABLE}
+ * Log4j system property.
  * </p>
  * @see <a href="https://logging.apache.org/log4j/2.x/manual/thread-context.html">Thread Context Manual</a>
  */
@@ -188,13 +185,6 @@ public final class ThreadContext {
     @SuppressWarnings("PublicStaticCollectionField")
     public static final ThreadContextStack EMPTY_STACK = new EmptyThreadContextStack();
 
-    private static final String DISABLE_MAP = "disableThreadContextMap";
-    private static final String DISABLE_STACK = "disableThreadContextStack";
-    private static final String DISABLE_ALL = "disableThreadContext";
-
-    private static boolean disableAll;
-    private static boolean useMap;
-    private static boolean useStack;
     private static ThreadContextMap contextMap;
     private static ThreadContextStack contextStack;
     private static ReadOnlyThreadContextMap readOnlyContextMap;
@@ -210,20 +200,10 @@ public final class ThreadContext {
     /**
      * <em>Consider private, used for testing.</em>
      */
-    static void init() {
-        ThreadContextMapFactory.init();
-        contextMap = null;
-        final PropertiesUtil managerProps = PropertiesUtil.getProperties();
-        disableAll = managerProps.getBooleanProperty(DISABLE_ALL);
-        useStack = !(managerProps.getBooleanProperty(DISABLE_STACK) || disableAll);
-        useMap = !(managerProps.getBooleanProperty(DISABLE_MAP) || disableAll);
-
-        contextStack = new DefaultThreadContextStack(useStack);
-        if (!useMap) {
-            contextMap = new NoOpThreadContextMap();
-        } else {
-            contextMap = ThreadContextMapFactory.createThreadContextMap();
-        }
+    @InternalApi
+    public static void init() {
+        contextMap = LoggingSystem.createContextMap();
+        contextStack = LoggingSystem.createContextStack();
         if (contextMap instanceof ReadOnlyThreadContextMap) {
             readOnlyContextMap = (ReadOnlyThreadContextMap) contextMap;
         } else {
@@ -247,6 +227,24 @@ public final class ThreadContext {
     }
 
     /**
+     * Puts a context value (the <code>value</code> parameter) as identified with the <code>key</code> parameter into
+     * the current thread's context map if the key does not exist.
+     *
+     * <p>
+     * If the current thread does not have a context map it is created as a side effect.
+     * </p>
+     *
+     * @param key The key name.
+     * @param value The key value.
+     * @since 2.13.0
+     */
+    public static void putIfNull(final String key, final String value) {
+        if(!contextMap.containsKey(key)) {
+            contextMap.put(key, value);
+        }
+    }
+
+    /**
      * Puts all given context map entries into the current thread's
      * context map.
      *
@@ -256,15 +254,7 @@ public final class ThreadContext {
      * @since 2.7
      */
     public static void putAll(final Map<String, String> m) {
-        if (contextMap instanceof ThreadContextMap2) {
-            ((ThreadContextMap2) contextMap).putAll(m);
-        } else if (contextMap instanceof DefaultThreadContextMap) {
-            ((DefaultThreadContextMap) contextMap).putAll(m);
-        } else {
-            for (final Map.Entry<String, String> entry: m.entrySet()) {
-                contextMap.put(entry.getKey(), entry.getValue());
-            }
-        }
+        contextMap.putAll(m);
     }
 
     /**
@@ -298,15 +288,7 @@ public final class ThreadContext {
      * @since 2.8
      */
     public static void removeAll(final Iterable<String> keys) {
-        if (contextMap instanceof CleanableThreadContextMap) {
-            ((CleanableThreadContextMap) contextMap).removeAll(keys);
-        } else if (contextMap instanceof DefaultThreadContextMap) {
-            ((DefaultThreadContextMap) contextMap).removeAll(keys);
-        } else {
-            for (final String key : keys) {
-                contextMap.remove(key);
-            }
-        }
+        contextMap.removeAll(keys);
     }
 
     /**
@@ -363,7 +345,6 @@ public final class ThreadContext {
      * </p>
      *
      * @return the internal data structure used to store thread context key-value pairs or {@code null}
-     * @see ThreadContextMapFactory
      * @see DefaultThreadContextMap
      * @see org.apache.logging.log4j.spi.CopyOnWriteSortedArrayThreadContextMap
      * @see org.apache.logging.log4j.spi.GarbageFreeSortedArrayThreadContextMap
@@ -414,7 +395,7 @@ public final class ThreadContext {
      * @param stack The stack to use.
      */
     public static void setStack(final Collection<String> stack) {
-        if (stack.isEmpty() || !useStack) {
+        if (stack.isEmpty()) {
             return;
         }
         contextStack.clear();

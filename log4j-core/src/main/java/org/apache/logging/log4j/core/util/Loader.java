@@ -21,8 +21,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.spi.LoggingSystemProperties;
 import org.apache.logging.log4j.status.StatusLogger;
 import org.apache.logging.log4j.util.LoaderUtil;
+import org.apache.logging.log4j.util.PropertiesUtil;
 
 /**
  * Load resources (or images) from various sources.
@@ -33,6 +35,9 @@ public final class Loader {
 
     private static final String TSTR = "Caught Exception while in Loader.getResource. This may be innocuous.";
 
+    final static Boolean ignoreTccl =
+        Boolean.valueOf(PropertiesUtil.getProperties().getStringProperty(LoggingSystemProperties.LOADER_IGNORE_THREAD_CONTEXT_LOADER, null));
+
     private Loader() {
     }
 
@@ -41,7 +46,12 @@ public final class Loader {
      * @return the ClassLoader.
      */
     public static ClassLoader getClassLoader() {
-        return getClassLoader(Loader.class, null);
+        return Loader.getClassLoader(Loader.class, null);
+    }
+
+    // TODO: this method could use some explanation
+    public static ClassLoader getClassLoader(final Class<?> class1, final Class<?> class2) {
+        return LoaderUtil.getClassLoader(class1, class2);
     }
 
     /**
@@ -49,22 +59,10 @@ public final class Loader {
      * available.
      *
      * @return the TCCL.
-     * @see org.apache.logging.log4j.util.LoaderUtil#getThreadContextClassLoader()
+     * @see LoaderUtil#getThreadContextClassLoader()
      */
     public static ClassLoader getThreadContextClassLoader() {
         return LoaderUtil.getThreadContextClassLoader();
-    }
-
-    // TODO: this method could use some explanation
-    public static ClassLoader getClassLoader(final Class<?> class1, final Class<?> class2) {
-        final ClassLoader threadContextClassLoader = getThreadContextClassLoader();
-        final ClassLoader loader1 = class1 == null ? null : class1.getClassLoader();
-        final ClassLoader loader2 = class2 == null ? null : class2.getClassLoader();
-
-        if (isChild(threadContextClassLoader, loader1)) {
-            return isChild(threadContextClassLoader, loader2) ? threadContextClassLoader : loader2;
-        }
-        return isChild(loader1, loader2) ? loader1 : loader2;
     }
 
     /**
@@ -76,10 +74,10 @@ public final class Loader {
      * <li>Search for {@code resource} using the thread context
      * class loader under Java2. If that fails, search for
      * {@code resource} using the class loader that loaded this
-     * class ({@code Loader}). Under JDK 1.1, only the the class
+     * class ({@code Loader}). Under JDK 1.1, only the class
      * loader that loaded this class ({@code Loader}) is used.</li>
      * <li>Try one last time with
-     * {@code ClassLoader.getSystemResource(resource)}, that is is
+     * {@code ClassLoader.getSystemResource(resource)}, that is
      * using the system class loader in JDK 1.2 and virtual machine's
      * built-in class loader in JDK 1.1.</li>
      * </ol>
@@ -138,10 +136,10 @@ public final class Loader {
      * <li>Search for {@code resource} using the thread context
      * class loader under Java2. If that fails, search for
      * {@code resource} using the class loader that loaded this
-     * class ({@code Loader}). Under JDK 1.1, only the the class
+     * class ({@code Loader}). Under JDK 1.1, only the class
      * loader that loaded this class ({@code Loader}) is used.</li>
      * <li>Try one last time with
-     * {@code ClassLoader.getSystemResource(resource)}, that is is
+     * {@code ClassLoader.getSystemResource(resource)}, that is
      * using the system class loader in JDK 1.2 and virtual machine's
      * built-in class loader in JDK 1.1.</li>
      * </ol>
@@ -195,39 +193,6 @@ public final class Loader {
     }
 
     /**
-     * Determines if one ClassLoader is a child of another ClassLoader. Note that a {@code null} ClassLoader is
-     * interpreted as the system ClassLoader as per convention.
-     *
-     * @param loader1 the ClassLoader to check for childhood.
-     * @param loader2 the ClassLoader to check for parenthood.
-     * @return {@code true} if the first ClassLoader is a strict descendant of the second ClassLoader.
-     */
-    private static boolean isChild(final ClassLoader loader1, final ClassLoader loader2) {
-        if (loader1 != null && loader2 != null) {
-            ClassLoader parent = loader1.getParent();
-            while (parent != null && parent != loader2) {
-                parent = parent.getParent();
-            }
-            // once parent is null, we're at the system CL, which would indicate they have separate ancestry
-            return parent != null;
-        }
-        return loader1 != null;
-    }
-
-    /**
-     * Loads and initializes a named Class using a given ClassLoader.
-     *
-     * @param className The class name.
-     * @param loader The class loader.
-     * @return The class.
-     * @throws ClassNotFoundException if the class could not be found.
-     */
-    public static Class<?> initializeClass(final String className, final ClassLoader loader)
-            throws ClassNotFoundException {
-        return Class.forName(className, true, loader);
-    }
-
-    /**
      * Loads a named Class using a given ClassLoader.
      *
      * @param className The class name.
@@ -238,8 +203,8 @@ public final class Loader {
     public static Class<?> loadClass(final String className, final ClassLoader loader)
             throws ClassNotFoundException {
         return loader != null ? loader.loadClass(className) : null;
-    }    
-    
+    }
+
     /**
      * Load a Class in the {@code java.*} namespace by name. Useful for peculiar scenarios typically involving
      * Google App Engine.
@@ -265,16 +230,13 @@ public final class Loader {
      * @throws ClassNotFoundException if the class isn't available to the usual ClassLoaders
      * @throws IllegalAccessException if the class can't be instantiated through a public constructor
      * @throws InstantiationException if there was an exception whilst instantiating the class
-     * @throws NoSuchMethodException if there isn't a no-args constructor on the class
      * @throws InvocationTargetException if there was an exception whilst constructing the class
+     * @since 2.1
      */
-    public static Object newInstanceOf(final String className)
-            throws ClassNotFoundException,
-                   IllegalAccessException,
-                   InstantiationException,
-                   NoSuchMethodException,
-                   InvocationTargetException {
-        return LoaderUtil.newInstanceOf(className);
+    @SuppressWarnings("unchecked")
+    public static <T> T newInstanceOf(final String className)
+            throws ClassNotFoundException, IllegalAccessException, InstantiationException, InvocationTargetException {
+        return newInstanceOf((Class<T>) loadClass(className));
     }
 
     /**
@@ -287,17 +249,32 @@ public final class Loader {
      * @throws ClassNotFoundException if the class isn't available to the usual ClassLoaders
      * @throws IllegalAccessException if the class can't be instantiated through a public constructor
      * @throws InstantiationException if there was an exception whilst instantiating the class
-     * @throws NoSuchMethodException if there isn't a no-args constructor on the class
      * @throws InvocationTargetException if there was an exception whilst constructing the class
      * @throws ClassCastException if the constructed object isn't type compatible with {@code T}
      */
     public static <T> T newCheckedInstanceOf(final String className, final Class<T> clazz)
-            throws ClassNotFoundException,
-                   NoSuchMethodException,
-                   IllegalAccessException,
-                   InvocationTargetException,
-                   InstantiationException {
-        return LoaderUtil.newCheckedInstanceOf(className, clazz);
+            throws ClassNotFoundException, IllegalAccessException, InvocationTargetException, InstantiationException {
+        return newInstanceOf(loadClass(className).asSubclass(clazz));
+    }
+
+    /**
+     * Loads and instantiates a Class using the default constructor.
+     *
+     * @param clazz The class.
+     * @return new instance of the class.
+     * @throws IllegalAccessException if the class can't be instantiated through a public constructor
+     * @throws InstantiationException if there was an exception whilst instantiating the class
+     * @throws InvocationTargetException if there was an exception whilst constructing the class
+     * @since 2.7
+     */
+    public static <T> T newInstanceOf(final Class<T> clazz)
+            throws InstantiationException, IllegalAccessException, InvocationTargetException {
+        try {
+            return clazz.getConstructor().newInstance();
+        } catch (final NoSuchMethodException ignored) {
+            // FIXME: looking at the code for Class.newInstance(), this seems to do the same thing as above
+            return clazz.newInstance();
+        }
     }
 
     /**
@@ -307,11 +284,35 @@ public final class Loader {
      * @return {@code true} if the class could be found or {@code false} otherwise.
      */
     public static boolean isClassAvailable(final String className) {
-        return LoaderUtil.isClassAvailable(className);
+        final ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+        try {
+            Thread.currentThread().setContextClassLoader(getClassLoader());
+            return LoaderUtil.isClassAvailable(className);
+        } finally {
+            Thread.currentThread().setContextClassLoader(contextClassLoader);
+        }
     }
 
     public static boolean isJansiAvailable() {
         return isClassAvailable("org.fusesource.jansi.AnsiRenderer");
     }
 
+    /**
+     * Loads a class by name. This method respects the {@link LoggingSystemProperties#LOADER_IGNORE_THREAD_CONTEXT_LOADER} Log4j property. If this property is
+     * specified and set to anything besides {@code false}, then the default ClassLoader will be used.
+     *
+     * @param className The class name.
+     * @return the Class for the given name.
+     * @throws ClassNotFoundException if the specified class name could not be found
+     */
+    public static Class<?> loadClass(final String className) throws ClassNotFoundException {
+        if (ignoreTccl) {
+            return Class.forName(className);
+        }
+        try {
+            return getClassLoader().loadClass(className);
+        } catch (final Throwable ignored) {
+            return Class.forName(className);
+        }
+    }
 }

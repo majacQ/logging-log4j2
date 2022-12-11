@@ -29,7 +29,18 @@ public final class StaticMDCBinder {
      */
     public static final StaticMDCBinder SINGLETON = new StaticMDCBinder();
 
+    private final MDCAdapter mdcAdapter = new Log4jMDCAdapter();
+
     private StaticMDCBinder() {
+    }
+
+    /**
+     * Returns the {@link #SINGLETON} {@link StaticMDCBinder}.
+     * Added to slf4j-api 1.7.14 via https://github.com/qos-ch/slf4j/commit/ea3cca72cd5a9329a06b788317a17e806ee8acd0
+     * @return the singleton instance
+     */
+    public static StaticMDCBinder getSingleton() {
+        return SINGLETON;
     }
 
     /**
@@ -37,7 +48,7 @@ public final class StaticMDCBinder {
      * @return an MDC adapter
      */
     public MDCAdapter getMDCA() {
-        return new Log4jMDCAdapter();
+        return mdcAdapter;
     }
 
     /**

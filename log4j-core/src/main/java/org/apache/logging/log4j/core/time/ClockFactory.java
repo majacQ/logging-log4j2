@@ -16,23 +16,17 @@
  */
 package org.apache.logging.log4j.core.time;
 
+import org.apache.logging.log4j.core.impl.Log4jProperties;
 import org.apache.logging.log4j.core.time.internal.CachedClock;
 import org.apache.logging.log4j.core.time.internal.CoarseCachedClock;
 import org.apache.logging.log4j.core.time.internal.SystemClock;
-import org.apache.logging.log4j.core.time.internal.SystemMillisClock;
-import org.apache.logging.log4j.core.util.Loader;
-import org.apache.logging.log4j.status.StatusLogger;
-import org.apache.logging.log4j.util.PropertiesUtil;
-import org.apache.logging.log4j.util.Supplier;
-
-import java.util.HashMap;
-import java.util.Map;
+import org.apache.logging.log4j.plugins.di.DI;
+import org.apache.logging.log4j.plugins.di.Injector;
+import org.apache.logging.log4j.util.Lazy;
 
 /**
  * Factory for {@code Clock} objects.
- * <p>
- * This class replaces {@link org.apache.logging.log4j.core.util.ClockFactory}.
- * </p>
+ *
  * @since 2.11
  */
 public final class ClockFactory {
@@ -41,13 +35,13 @@ public final class ClockFactory {
      * Name of the system property that can be used to specify a {@code Clock}
      * implementation class. The value of this property is {@value}.
      */
-    public static final String PROPERTY_NAME = "log4j.Clock";
-    private static final StatusLogger LOGGER = StatusLogger.getLogger();
-
-    // private static final Clock clock = createClock();
-
-    private ClockFactory() {
-    }
+    public static final String PROPERTY_NAME = Log4jProperties.CONFIG_CLOCK;
+    private static final Lazy<Clock> FALLBACK = Lazy.lazy(() -> {
+        // TODO(ms): split out clock bindings for smaller fallback init
+        final Injector injector = DI.createInjector();
+        injector.init();
+        return injector.getInstance(Clock.KEY);
+    });
 
     /**
      * Returns a {@code Clock} instance depending on the value of system
@@ -71,46 +65,9 @@ public final class ClockFactory {
      *
      * @return a {@code Clock} instance
      */
+    @Deprecated
     public static Clock getClock() {
-        return createClock();
+        return FALLBACK.value();
     }
 
-    private static Map<String, Supplier<Clock>> aliases() {
-        Map<String, Supplier<Clock>> result = new HashMap<>();
-        result.put("SystemClock",       new Supplier<Clock>() { @Override public Clock get() { return new SystemClock(); } });
-        result.put("SystemMillisClock", new Supplier<Clock>() { @Override public Clock get() { return new SystemMillisClock(); } });
-        result.put("CachedClock",       new Supplier<Clock>() { @Override public Clock get() { return CachedClock.instance(); } });
-        result.put("CoarseCachedClock", new Supplier<Clock>() { @Override public Clock get() { return CoarseCachedClock.instance(); } });
-        result.put("org.apache.logging.log4j.core.time.internal.CachedClock", new Supplier<Clock>() { @Override public Clock get() { return CachedClock.instance(); } });
-        result.put("org.apache.logging.log4j.core.time.internal.CoarseCachedClock", new Supplier<Clock>() { @Override public Clock get() { return CoarseCachedClock.instance(); } });
-        return result;
-    }
-
-    private static Clock createClock() {
-        final String userRequest = PropertiesUtil.getProperties().getStringProperty(PROPERTY_NAME);
-        if (userRequest == null) {
-            LOGGER.trace("Using default SystemClock for timestamps.");
-            return logSupportedPrecision(new SystemClock());
-        }
-        Supplier<Clock> specified = aliases().get(userRequest);
-        if (specified != null) {
-            LOGGER.trace("Using specified {} for timestamps.", userRequest);
-            return logSupportedPrecision(specified.get());
-        }
-        try {
-            final Clock result = Loader.newCheckedInstanceOf(userRequest, Clock.class);
-            LOGGER.trace("Using {} for timestamps.", result.getClass().getName());
-            return logSupportedPrecision(result);
-        } catch (final Exception e) {
-            final String fmt = "Could not create {}: {}, using default SystemClock for timestamps.";
-            LOGGER.error(fmt, userRequest, e);
-            return logSupportedPrecision(new SystemClock());
-        }
-    }
-
-    private static Clock logSupportedPrecision(Clock clock) {
-        String support = clock instanceof PreciseClock ? "supports" : "does not support";
-        LOGGER.debug("{} {} precise timestamps.", clock.getClass().getName(), support);
-        return clock;
-    }
 }

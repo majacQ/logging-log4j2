@@ -16,39 +16,41 @@
  */
 package org.apache.logging.log4j.core.appender.rolling.action;
 
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.time.Clock;
+import org.apache.logging.log4j.core.time.ClockFactory;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Inject;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.status.StatusLogger;
+
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.time.Clock;
-import org.apache.logging.log4j.core.time.ClockFactory;
-import org.apache.logging.log4j.status.StatusLogger;
+import java.util.function.Supplier;
 
 /**
  * PathCondition that accepts paths that are older than the specified duration.
  */
-@Plugin(name = "IfLastModified", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public final class IfLastModified implements PathCondition {
     private static final Logger LOGGER = StatusLogger.getLogger();
-    private static final Clock CLOCK = ClockFactory.getClock();
+    private final Clock clock;
 
     private final Duration age;
     private final PathCondition[] nestedConditions;
 
-    private IfLastModified(final Duration age, final PathCondition[] nestedConditions) {
+    private IfLastModified(final Duration age, final PathCondition[] nestedConditions, final Clock clock) {
         this.age = Objects.requireNonNull(age, "age");
-        this.nestedConditions = nestedConditions == null ? new PathCondition[0] : Arrays.copyOf(nestedConditions,
-                nestedConditions.length);
+        this.nestedConditions = PathCondition.copy(nestedConditions);
+        this.clock = clock;
     }
 
     public Duration getAge() {
@@ -56,12 +58,12 @@ public final class IfLastModified implements PathCondition {
     }
 
     public List<PathCondition> getNestedConditions() {
-        return Collections.unmodifiableList(Arrays.asList(nestedConditions));
+        return List.of(nestedConditions);
     }
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.PathCondition#accept(java.nio.file.Path,
      * java.nio.file.Path, java.nio.file.attribute.BasicFileAttributes)
      */
@@ -69,7 +71,7 @@ public final class IfLastModified implements PathCondition {
     public boolean accept(final Path basePath, final Path relativePath, final BasicFileAttributes attrs) {
         final FileTime fileTime = attrs.lastModifiedTime();
         final long millis = fileTime.toMillis();
-        final long ageMillis = CLOCK.currentTimeMillis() - millis;
+        final long ageMillis = clock.currentTimeMillis() - millis;
         final boolean result = ageMillis >= age.toMillis();
         final String match = result ? ">=" : "<";
         final String accept = result ? "ACCEPTED" : "REJECTED";
@@ -82,7 +84,7 @@ public final class IfLastModified implements PathCondition {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.PathCondition#beforeFileTreeWalk()
      */
     @Override
@@ -90,25 +92,56 @@ public final class IfLastModified implements PathCondition {
         IfAll.beforeFileTreeWalk(nestedConditions);
     }
 
-    /**
-     * Create an IfLastModified condition.
-     * 
-     * @param age The path age that is accepted by this condition. Must be a valid Duration.
-     * @param nestedConditions nested conditions to evaluate if this condition accepts a path
-     * @return An IfLastModified condition.
-     */
-    @PluginFactory
-    public static IfLastModified createAgeCondition( 
-            // @formatter:off
-            @PluginAttribute("age") final Duration age, 
-            @PluginElement("PathConditions") final PathCondition... nestedConditions) {
-            // @formatter:on
-        return new IfLastModified(age, nestedConditions);
-    }
-
     @Override
     public String toString() {
         final String nested = nestedConditions.length == 0 ? "" : " AND " + Arrays.toString(nestedConditions);
         return "IfLastModified(age=" + age + nested + ")";
+    }
+
+    /**
+     * Create an IfLastModified condition.
+     *
+     * @param age The path age that is accepted by this condition. Must be a valid Duration.
+     * @param nestedConditions nested conditions to evaluate if this condition accepts a path
+     * @return An IfLastModified condition.
+     */
+    @Deprecated(since = "3.0.0", forRemoval = true)
+    public static IfLastModified createAgeCondition(final Duration age, final PathCondition... nestedConditions) {
+        return newBuilder().setAge(age).setNestedConditions(nestedConditions).get();
+    }
+
+    @PluginFactory
+    public static Builder newBuilder() {
+        return new Builder();
+    }
+
+    public static class Builder implements Supplier<IfLastModified> {
+        private Duration age;
+        private PathCondition[] nestedConditions;
+        private Clock clock;
+
+        public Builder setAge(@PluginAttribute final Duration age) {
+            this.age = age;
+            return this;
+        }
+
+        public Builder setNestedConditions(@PluginElement final PathCondition... nestedConditions) {
+            this.nestedConditions = nestedConditions;
+            return this;
+        }
+
+        @Inject
+        public Builder setClock(final Clock clock) {
+            this.clock = clock;
+            return this;
+        }
+
+        @Override
+        public IfLastModified get() {
+            if (clock == null) {
+                clock = ClockFactory.getClock();
+            }
+            return new IfLastModified(age, nestedConditions, clock);
+        }
     }
 }

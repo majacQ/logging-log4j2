@@ -17,6 +17,12 @@
 
 package org.apache.logging.log4j.core.util;
 
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.AbstractLifeCycle;
+import org.apache.logging.log4j.core.LifeCycle;
+import org.apache.logging.log4j.plugins.Singleton;
+import org.apache.logging.log4j.status.StatusLogger;
+
 import java.lang.ref.Reference;
 import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
@@ -27,24 +33,22 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.AbstractLifeCycle;
-import org.apache.logging.log4j.core.LifeCycle2;
-import org.apache.logging.log4j.status.StatusLogger;
-
 /**
  * ShutdownRegistrationStrategy that simply uses {@link Runtime#addShutdownHook(Thread)}. If no strategy is specified,
  * this one is used for shutdown hook registration.
  *
  * @since 2.1
  */
-public class DefaultShutdownCallbackRegistry implements ShutdownCallbackRegistry, LifeCycle2, Runnable {
+@Singleton
+public class DefaultShutdownCallbackRegistry implements ShutdownCallbackRegistry, LifeCycle, Runnable {
     /** Status logger. */
     protected static final Logger LOGGER = StatusLogger.getLogger();
 
     private final AtomicReference<State> state = new AtomicReference<>(State.INITIALIZED);
     private final ThreadFactory threadFactory;
-    private final Collection<Cancellable> hooks = new CopyOnWriteArrayList<>();
+
+    // use references to prevent memory leaks
+    private final Collection<Reference<Cancellable>> hooks = new CopyOnWriteArrayList<>();
     private Reference<Thread> shutdownHookRef;
 
     /**
@@ -69,15 +73,18 @@ public class DefaultShutdownCallbackRegistry implements ShutdownCallbackRegistry
     @Override
     public void run() {
         if (state.compareAndSet(State.STARTED, State.STOPPING)) {
-            for (final Runnable hook : hooks) {
-                try {
-                    hook.run();
-                } catch (final Throwable t1) {
+            for (final Reference<Cancellable> hookRef : hooks) {
+                final Cancellable hook = hookRef.get();
+                if (hook != null) {
                     try {
-                        LOGGER.error(SHUTDOWN_HOOK_MARKER, "Caught exception executing shutdown hook {}", hook, t1);
-                    } catch (final Throwable t2) {
-                        System.err.println("Caught exception " + t2.getClass() + " logging exception " + t1.getClass());
-                        t1.printStackTrace();
+                        hook.run();
+                    } catch (final Throwable t1) {
+                        try {
+                            LOGGER.error(SHUTDOWN_HOOK_MARKER, "Caught exception executing shutdown hook {}", hook, t1);
+                        } catch (final Throwable t2) {
+                            System.err.println("Caught exception " + t2.getClass() + " logging exception " + t1.getClass());
+                            t1.printStackTrace();
+                        }
                     }
                 }
             }
@@ -86,34 +93,39 @@ public class DefaultShutdownCallbackRegistry implements ShutdownCallbackRegistry
     }
 
     private static class RegisteredCancellable implements Cancellable {
-        // use a reference to prevent memory leaks
-        private final Reference<Runnable> hook;
-        private Collection<Cancellable> registered;
+        private Runnable callback;
+        private Collection<Reference<Cancellable>> registered;
 
-        RegisteredCancellable(final Runnable callback, final Collection<Cancellable> registered) {
+        RegisteredCancellable(final Runnable callback, final Collection<Reference<Cancellable>> registered) {
+            this.callback = callback;
             this.registered = registered;
-            hook = new SoftReference<>(callback);
         }
 
         @Override
         public void cancel() {
-            hook.clear();
-            registered.remove(this);
-            registered = null;
+            callback = null;
+            final Collection<Reference<Cancellable>> references = registered;
+            if (references != null) {
+                registered = null;
+                references.removeIf(ref -> {
+                    final Cancellable value = ref.get();
+                    return value == null || value == RegisteredCancellable.this;
+                });
+            }
         }
 
         @Override
         public void run() {
-            final Runnable runnableHook = this.hook.get();
+            final Runnable runnableHook = callback;
             if (runnableHook != null) {
                 runnableHook.run();
-                this.hook.clear();
+                callback = null;
             }
         }
 
         @Override
         public String toString() {
-            return String.valueOf(hook.get());
+            return String.valueOf(callback);
         }
     }
 
@@ -121,7 +133,7 @@ public class DefaultShutdownCallbackRegistry implements ShutdownCallbackRegistry
     public Cancellable addShutdownCallback(final Runnable callback) {
         if (isStarted()) {
             final Cancellable receipt = new RegisteredCancellable(callback, hooks);
-            hooks.add(receipt);
+            hooks.add(new SoftReference<>(receipt));
             return receipt;
         }
         throw new IllegalStateException("Cannot add new shutdown hook as this is not started. Current state: " +

@@ -22,6 +22,7 @@ import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.nio.file.Paths;
 
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -45,40 +46,28 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
     private static final RollingRandomAccessFileManagerFactory FACTORY = new RollingRandomAccessFileManagerFactory();
 
     private RandomAccessFile randomAccessFile;
-    private final ThreadLocal<Boolean> isEndOfBatch = new ThreadLocal<>();
-
-    @Deprecated
-    public RollingRandomAccessFileManager(final LoggerContext loggerContext, final RandomAccessFile raf,
-            final String fileName, final String pattern, final OutputStream os, final boolean append,
-            final boolean immediateFlush, final int bufferSize, final long size, final long time,
-            final TriggeringPolicy policy, final RolloverStrategy strategy, final String advertiseURI,
-            final Layout<? extends Serializable> layout, final boolean writeHeader) {
-        this(loggerContext, raf, fileName, pattern, os, append, immediateFlush, bufferSize, size, time, policy, strategy, advertiseURI,
-               layout, null, null, null, writeHeader);
-    }
 
     /**
      * @since 2.8.3
      */
     public RollingRandomAccessFileManager(final LoggerContext loggerContext, final RandomAccessFile raf,
             final String fileName, final String pattern, final OutputStream os, final boolean append,
-            final boolean immediateFlush, final int bufferSize, final long size, final long time,
+            final boolean immediateFlush, final int bufferSize, final long initialTime, final long time,
             final TriggeringPolicy policy, final RolloverStrategy strategy, final String advertiseURI,
             final Layout<? extends Serializable> layout,
             final String filePermissions, final String fileOwner, final String fileGroup,
             final boolean writeHeader) {
-        super(loggerContext, fileName, pattern, os, append, false, size, time, policy, strategy, advertiseURI, layout,
+        super(loggerContext, fileName, pattern, os, append, false, initialTime, time, policy, strategy, advertiseURI, layout,
                 filePermissions, fileOwner, fileGroup,
                 writeHeader, ByteBuffer.wrap(new byte[bufferSize]));
         this.randomAccessFile = raf;
-        isEndOfBatch.set(Boolean.FALSE);
         writeHeader();
     }
 
     /**
      * Writes the layout's header to the file if it exists.
      */
-    private void writeHeader() {
+    protected void writeHeader() {
         if (layout == null) {
             return;
         }
@@ -111,12 +100,23 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
                 filePermissions, fileOwner, fileGroup, configuration), FACTORY));
     }
 
+    /**
+     * No longer used, the {@link org.apache.logging.log4j.core.LogEvent#isEndOfBatch()} attribute is used instead.
+     * @return {@link Boolean#FALSE}.
+     * @deprecated end-of-batch on the event is used instead.
+     */
+    @Deprecated
     public Boolean isEndOfBatch() {
-        return isEndOfBatch.get();
+        return Boolean.FALSE;
     }
 
-    public void setEndOfBatch(final boolean endOfBatch) {
-        this.isEndOfBatch.set(Boolean.valueOf(endOfBatch));
+    /**
+     * No longer used, the {@link org.apache.logging.log4j.core.LogEvent#isEndOfBatch()} attribute is used instead.
+     * This method is a no-op.
+     * @deprecated end-of-batch on the event is used instead.
+     */
+    @Deprecated
+    public void setEndOfBatch(@SuppressWarnings("unused") final boolean endOfBatch) {
     }
 
     // override to make visible for unit tests
@@ -130,8 +130,8 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
     protected synchronized void writeToDestination(final byte[] bytes, final int offset, final int length) {
         try {
             if (randomAccessFile == null) {
-                String fileName = getFileName();
-                File file = new File(fileName);
+                final String fileName = getFileName();
+                final File file = new File(fileName);
                 FileUtils.makeParentDirs(file);
                 createFileAfterRollover(fileName);
             }
@@ -148,8 +148,11 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
         createFileAfterRollover(getFileName());
     }
 
-    private void createFileAfterRollover(String fileName) throws IOException {
+    private void createFileAfterRollover(final String fileName) throws IOException {
         this.randomAccessFile = new RandomAccessFile(fileName, "rw");
+        if (isAttributeViewEnabled()) {
+            defineAttributeView(Paths.get(fileName));
+        }
         if (isAppend()) {
             randomAccessFile.seek(randomAccessFile.length());
         }
@@ -203,7 +206,7 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
         public RollingRandomAccessFileManager createManager(final String name, final FactoryData data) {
             File file = null;
             long size = 0;
-            long time = System.currentTimeMillis();
+            long initialTime = System.currentTimeMillis();
             RandomAccessFile raf = null;
             if (data.fileName != null) {
                 file = new File(name);
@@ -213,7 +216,7 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
                 }
                 size = data.append ? file.length() : 0;
                 if (file.exists()) {
-                    time = file.lastModified();
+                    initialTime = file.lastModified();
                 }
                 try {
                     FileUtils.makeParentDirs(file);
@@ -241,7 +244,7 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
             final boolean writeHeader = !data.append || file == null || !file.exists();
 
             final RollingRandomAccessFileManager rrm = new RollingRandomAccessFileManager(data.getLoggerContext(), raf, name, data.pattern,
-                    NullOutputStream.getInstance(), data.append, data.immediateFlush, data.bufferSize, size, time, data.policy,
+                    NullOutputStream.getInstance(), data.append, data.immediateFlush, data.bufferSize, size, initialTime, data.policy,
                     data.strategy, data.advertiseURI, data.layout, data.filePermissions, data.fileOwner, data.fileGroup, writeHeader);
             if (rrm.isAttributeViewEnabled()) {
                 rrm.defineAttributeView(file.toPath());
@@ -304,21 +307,31 @@ public class RollingRandomAccessFileManager extends RollingFileManager {
             this.fileGroup = fileGroup;
         }
 
-        public TriggeringPolicy getTriggeringPolicy()
-        {
+        public String getPattern() {
+            return pattern;
+        }
+
+        public TriggeringPolicy getTriggeringPolicy() {
             return this.policy;
         }
 
-        public RolloverStrategy getRolloverStrategy()
-        {
+        public RolloverStrategy getRolloverStrategy() {
             return this.strategy;
         }
+
     }
 
+    /**
+     * Updates the RollingFileManager's data during a reconfiguration. This method should be considered private.
+     * It is not thread safe and calling it outside of a reconfiguration may lead to errors. This method may be
+     * made protected in a future release.
+     * @param data The data to update.
+     */
     @Override
     public void updateData(final Object data) {
         final FactoryData factoryData = (FactoryData) data;
         setRolloverStrategy(factoryData.getRolloverStrategy());
+        setPatternProcessor(new PatternProcessor(factoryData.getPattern(), getPatternProcessor()));
         setTriggeringPolicy(factoryData.getTriggeringPolicy());
     }
 }

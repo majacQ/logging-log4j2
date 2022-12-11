@@ -17,43 +17,40 @@
 
 package org.apache.logging.log4j.jms.appender;
 
-import java.io.Serializable;
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
-
-import javax.jms.JMSException;
-
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.appender.AbstractManager;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAliases;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.Required;
-import org.apache.logging.log4j.core.net.JndiManager;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.core.util.Constants;
 import org.apache.logging.log4j.jms.appender.JmsManager.JmsManagerConfiguration;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAliases;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.validation.constraints.Required;
+
+import javax.jms.JMSException;
+import java.io.Serializable;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Generic JMS Appender plugin for both queues and topics. This Appender replaces the previous split ones. However,
  * configurations set up for the 2.0 version of the JMS appenders will still work.
  */
-@Plugin(name = "JMS", category = Node.CATEGORY, elementType = Appender.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Appender.ELEMENT_TYPE, printObject = true)
+@Plugin("JMS")
 @PluginAliases({ "JMSQueue", "JMSTopic" })
 public class JmsAppender extends AbstractAppender {
 
-    public static class Builder implements org.apache.logging.log4j.core.util.Builder<JmsAppender> {
+    public static class Builder<B extends Builder<B>> extends AbstractAppender.Builder<B>
+            implements org.apache.logging.log4j.plugins.util.Builder<JmsAppender> {
 
         public static final int DEFAULT_RECONNECT_INTERVAL_MILLIS = 5000;
-
-        @PluginBuilderAttribute
-        @Required(message = "A name for the JmsAppender must be specified")
-        private String name;
 
         @PluginBuilderAttribute
         private String factoryName;
@@ -85,16 +82,8 @@ public class JmsAppender extends AbstractAppender {
         @PluginBuilderAttribute(sensitive = true)
         private char[] password;
 
-        @PluginElement("Layout")
-        private Layout<? extends Serializable> layout;
-
-        @PluginElement("Filter")
-        private Filter filter;
-
-        private long reconnectIntervalMillis = DEFAULT_RECONNECT_INTERVAL_MILLIS;
-
         @PluginBuilderAttribute
-        private boolean ignoreExceptions = true;
+        private long reconnectIntervalMillis = DEFAULT_RECONNECT_INTERVAL_MILLIS;
 
         @PluginBuilderAttribute
         private boolean immediateFail;
@@ -108,133 +97,94 @@ public class JmsAppender extends AbstractAppender {
         @SuppressWarnings("resource") // actualJmsManager and jndiManager are managed by the JmsAppender
         @Override
         public JmsAppender build() {
+            if (!Constants.JNDI_JMS_ENABLED) {
+                LOGGER.error("JNDI has not been enabled. The log4j2.enableJndi property must be set to true");
+                return null;
+            }
             JmsManager actualJmsManager = jmsManager;
             JmsManagerConfiguration configuration = null;
             if (actualJmsManager == null) {
-                final Properties jndiProperties = JndiManager.createProperties(factoryName, providerUrl, urlPkgPrefixes,
-                        securityPrincipalName, securityCredentials, null);
+                Properties additionalProperties = null;
+                final Properties jndiProperties = JmsManager.createJndiProperties(factoryName, providerUrl,
+                        urlPkgPrefixes, securityPrincipalName, securityCredentials, additionalProperties);
                 configuration = new JmsManagerConfiguration(jndiProperties, factoryBindingName, destinationBindingName,
                         userName, password, false, reconnectIntervalMillis);
-                actualJmsManager = AbstractManager.getManager(name, JmsManager.FACTORY, configuration);
+                actualJmsManager = AbstractManager.getManager(getName(), JmsManager.FACTORY, configuration);
             }
             if (actualJmsManager == null) {
                 // JmsManagerFactory has already logged an ERROR.
                 return null;
             }
-            if (layout == null) {
+            if (getLayout() == null) {
                 LOGGER.error("No layout provided for JmsAppender");
                 return null;
             }
             try {
-                return new JmsAppender(name, filter, layout, ignoreExceptions, actualJmsManager);
+                return new JmsAppender(getName(), getFilter(), getLayout(), isIgnoreExceptions(), getPropertyArray(), actualJmsManager);
             } catch (final JMSException e) {
                 //  Never happens since the ctor no longer actually throws a JMSException.
                 throw new IllegalStateException(e);
             }
         }
 
-        public Builder setDestinationBindingName(final String destinationBindingName) {
+        public B setDestinationBindingName(final String destinationBindingName) {
             this.destinationBindingName = destinationBindingName;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setFactoryBindingName(final String factoryBindingName) {
+        public B setFactoryBindingName(final String factoryBindingName) {
             this.factoryBindingName = factoryBindingName;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setFactoryName(final String factoryName) {
+        public B setFactoryName(final String factoryName) {
             this.factoryName = factoryName;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setFilter(final Filter filter) {
-            this.filter = filter;
-            return this;
-        }
-
-        public Builder setIgnoreExceptions(final boolean ignoreExceptions) {
-            this.ignoreExceptions = ignoreExceptions;
-            return this;
-        }
-
-        public Builder setImmediateFail(final boolean immediateFail) {
+        public B setImmediateFail(final boolean immediateFail) {
             this.immediateFail = immediateFail;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setJmsManager(final JmsManager jmsManager) {
+        public B setJmsManager(final JmsManager jmsManager) {
             this.jmsManager = jmsManager;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setLayout(final Layout<? extends Serializable> layout) {
-            this.layout = layout;
-            return this;
-        }
-
-        public Builder setName(final String name) {
-            this.name = name;
-            return this;
-        }
-
-        public Builder setPassword(final char[] password) {
+        public B setPassword(final char[] password) {
             this.password = password;
-            return this;
+            return asBuilder();
         }
 
-        /**
-         * Sets the Password.
-         * @param password The new password.
-         * @deprecated Use setPassword(char[])
-         * @return the Builder.
-         */
-        @Deprecated
-        public Builder setPassword(final String password) {
-            this.password = password == null ? null : password.toCharArray();
-            return this;
-        }
-
-        public Builder setProviderUrl(final String providerUrl) {
+        public B setProviderUrl(final String providerUrl) {
             this.providerUrl = providerUrl;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setReconnectIntervalMillis(final long reconnectIntervalMillis) {
+        public B setReconnectIntervalMillis(final long reconnectIntervalMillis) {
             this.reconnectIntervalMillis = reconnectIntervalMillis;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setSecurityCredentials(final String securityCredentials) {
+        public B setSecurityCredentials(final String securityCredentials) {
             this.securityCredentials = securityCredentials;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setSecurityPrincipalName(final String securityPrincipalName) {
+        public B setSecurityPrincipalName(final String securityPrincipalName) {
             this.securityPrincipalName = securityPrincipalName;
-            return this;
+            return asBuilder();
         }
 
-        public Builder setUrlPkgPrefixes(final String urlPkgPrefixes) {
+        public B setUrlPkgPrefixes(final String urlPkgPrefixes) {
             this.urlPkgPrefixes = urlPkgPrefixes;
-            return this;
+            return asBuilder();
         }
 
-        /**
-         * Sets the user name.
-         * @param username The user's name.
-         * @deprecated Use {@link #setUserName(String)}.
-         * @return the Builder.
-         */
-        @Deprecated
-        public Builder setUsername(final String username) {
-            this.userName = username;
-            return this;
-        }
-
-        public Builder setUserName(final String userName) {
+        public B setUserName(final String userName) {
             this.userName = userName;
-            return this;
+            return asBuilder();
         }
 
         /**
@@ -242,35 +192,36 @@ public class JmsAppender extends AbstractAppender {
          */
         @Override
         public String toString() {
-            return "Builder [name=" + name + ", factoryName=" + factoryName + ", providerUrl=" + providerUrl
+            return "Builder [name=" + getName() + ", factoryName=" + factoryName + ", providerUrl=" + providerUrl
                     + ", urlPkgPrefixes=" + urlPkgPrefixes + ", securityPrincipalName=" + securityPrincipalName
                     + ", securityCredentials=" + securityCredentials + ", factoryBindingName=" + factoryBindingName
                     + ", destinationBindingName=" + destinationBindingName + ", username=" + userName + ", layout="
-                    + layout + ", filter=" + filter + ", ignoreExceptions=" + ignoreExceptions + ", jmsManager="
-                    + jmsManager + "]";
+                    + getLayout() + ", filter=" + getFilter() + ", ignoreExceptions=" + isIgnoreExceptions()
+                    + ", jmsManager=" + jmsManager + "]";
         }
 
     }
 
-    @PluginBuilderFactory
+    @PluginFactory
     public static Builder newBuilder() {
         return new Builder();
     }
 
-    private volatile JmsManager manager;
+    private final JmsManager manager;
 
     /**
      * @param name The Appender's name.
      * @param filter The filter to attach to the Appender, if any.
      * @param layout The layout to use to render the event.
      * @param ignoreExceptions true if exceptions should be ignore, false otherwise.
+     * @param properties TODO
      * @param manager The JMSManager.
      * @throws JMSException
      *             not thrown as of 2.9 but retained in the signature for compatibility, will be removed in 3.0.
      */
     protected JmsAppender(final String name, final Filter filter, final Layout<? extends Serializable> layout,
-            final boolean ignoreExceptions, final JmsManager manager) throws JMSException {
-        super(name, filter, layout, ignoreExceptions);
+            final boolean ignoreExceptions, Property[] properties, final JmsManager manager) throws JMSException {
+        super(name, filter, layout, ignoreExceptions, properties);
         this.manager = manager;
     }
 

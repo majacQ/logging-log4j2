@@ -56,7 +56,7 @@ public class FilteredObjectInputStream extends ObjectInputStream {
         this.allowedClasses = new HashSet<>();
     }
 
-    public FilteredObjectInputStream(InputStream in) throws IOException {
+    public FilteredObjectInputStream(final InputStream in) throws IOException {
         super(in);
         this.allowedClasses = new HashSet<>();
     }
@@ -75,9 +75,10 @@ public class FilteredObjectInputStream extends ObjectInputStream {
         return allowedClasses;
     }
 
+    @SuppressWarnings("BanSerializableRead")
     @Override
     protected Class<?> resolveClass(final ObjectStreamClass desc) throws IOException, ClassNotFoundException {
-        String name = desc.getName();
+        final String name = desc.getName();
         if (!(isAllowedByDefault(name) || allowedClasses.contains(name))) {
             throw new InvalidObjectException("Class is not allowed for deserialization: " + name);
         }

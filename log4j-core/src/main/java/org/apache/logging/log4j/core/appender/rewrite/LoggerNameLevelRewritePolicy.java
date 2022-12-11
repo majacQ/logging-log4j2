@@ -16,31 +16,32 @@
  */
 package org.apache.logging.log4j.core.appender.rewrite;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.impl.Log4jLogEvent;
+import org.apache.logging.log4j.core.util.KeyValuePair;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.impl.Log4jLogEvent;
-import org.apache.logging.log4j.core.util.KeyValuePair;
-
 /**
  * Rewrites log event levels for a given logger name.
- * 
+ *
  * @since 2.4
  */
-@Plugin(name = "LoggerNameLevelRewritePolicy", category = Core.CATEGORY_NAME, elementType = "rewritePolicy", printObject = true)
+@Configurable(elementType = "rewritePolicy", printObject = true)
+@Plugin("LoggerNameLevelRewritePolicy")
 public class LoggerNameLevelRewritePolicy implements RewritePolicy {
 
     /**
      * Creates a policy to rewrite levels for a given logger name.
-     * 
+     *
      * @param loggerNamePrefix
      *        The logger name prefix for events to rewrite; all event logger names that start with this string will be
      *        rewritten.

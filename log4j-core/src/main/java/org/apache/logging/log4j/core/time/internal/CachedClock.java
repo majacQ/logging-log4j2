@@ -16,10 +16,12 @@
  */
 package org.apache.logging.log4j.core.time.internal;
 
+import java.util.concurrent.locks.LockSupport;
+
 import org.apache.logging.log4j.core.time.Clock;
 import org.apache.logging.log4j.core.util.Log4jThread;
-
-import java.util.concurrent.locks.LockSupport;
+import org.apache.logging.log4j.plugins.Factory;
+import org.apache.logging.log4j.util.Lazy;
 
 /**
  * Implementation of the {@code Clock} interface that tracks the time in a
@@ -31,40 +33,27 @@ import java.util.concurrent.locks.LockSupport;
  */
 public final class CachedClock implements Clock {
     private static final int UPDATE_THRESHOLD = 1000;
-    private static volatile CachedClock instance;
-    private static final Object INSTANCE_LOCK = new Object();
+    private static final Lazy<CachedClock> INSTANCE = Lazy.lazy(CachedClock::new);
     private volatile long millis = System.currentTimeMillis();
     private short count = 0;
 
     private CachedClock() {
-        final Thread updater = new Log4jThread(new Runnable() {
-            @Override
-            public void run() {
-                while (true) {
-                    final long time = System.currentTimeMillis();
-                    millis = time;
+        final Thread updater = new Log4jThread(() -> {
+            while (true) {
+                millis = System.currentTimeMillis();
 
-                    // avoid explicit dependency on sun.misc.Util
-                    LockSupport.parkNanos(1000 * 1000);
-                }
+                // avoid explicit dependency on sun.misc.Util
+                LockSupport.parkNanos(1000 * 1000);
             }
         }, "CachedClock Updater Thread");
         updater.setDaemon(true);
         updater.start();
     }
 
+    @Factory
     public static CachedClock instance() {
         // LOG4J2-819: use lazy initialization of threads
-        CachedClock result = instance;
-        if (result == null) {
-            synchronized (INSTANCE_LOCK) {
-                result = instance;
-                if (result == null) {
-                    instance = result = new CachedClock();
-                }
-            }
-        }
-        return result;
+        return INSTANCE.value();
     }
 
     /**

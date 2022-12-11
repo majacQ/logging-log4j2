@@ -28,8 +28,7 @@ import org.apache.logging.log4j.ThreadContext;
  */
 public final class MDC {
 
-
-    private static ThreadLocal<Map<String, Object>> localMap =
+    private static final ThreadLocal<Map<String, Object>> localMap =
         new InheritableThreadLocal<Map<String, Object>>() {
             @Override
             protected Map<String, Object> initialValue() {
@@ -38,7 +37,7 @@ public final class MDC {
 
             @Override
             protected Map<String, Object> childValue(final Map<String, Object> parentValue) {
-                return parentValue == null ? new HashMap<String, Object>() : new HashMap<>(parentValue);
+                return parentValue == null ? new HashMap<>() : new HashMap<>(parentValue);
             }
         };
 

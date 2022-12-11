@@ -35,12 +35,10 @@ import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.TlsSyslogFrame;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
+import org.apache.logging.log4j.core.layout.internal.ExcludeChecker;
+import org.apache.logging.log4j.core.layout.internal.IncludeChecker;
+import org.apache.logging.log4j.core.layout.internal.ListChecker;
 import org.apache.logging.log4j.core.net.Facility;
 import org.apache.logging.log4j.core.net.Priority;
 import org.apache.logging.log4j.core.pattern.LogEventPatternConverter;
@@ -50,12 +48,17 @@ import org.apache.logging.log4j.core.pattern.PatternParser;
 import org.apache.logging.log4j.core.pattern.ThrowablePatternConverter;
 import org.apache.logging.log4j.core.util.NetUtils;
 import org.apache.logging.log4j.core.util.Patterns;
+import org.apache.logging.log4j.core.util.ProcessIdUtil;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.MessageCollectionMessage;
 import org.apache.logging.log4j.message.StructuredDataCollectionMessage;
 import org.apache.logging.log4j.message.StructuredDataId;
 import org.apache.logging.log4j.message.StructuredDataMessage;
-import org.apache.logging.log4j.util.ProcessIdUtil;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.util.StringBuilders;
 import org.apache.logging.log4j.util.Strings;
 
@@ -64,13 +67,14 @@ import org.apache.logging.log4j.util.Strings;
  *
  * @see <a href="https://tools.ietf.org/html/rfc5424">RFC 5424</a>
  */
-@Plugin(name = "Rfc5424Layout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Plugin
 public final class Rfc5424Layout extends AbstractStringLayout {
 
     /**
-     * Not a very good default - it is the Apache Software Foundation's enterprise number.
+     * The default example enterprise number from RFC5424.
      */
-    public static final int DEFAULT_ENTERPRISE_NUMBER = 18060;
+    public static final int DEFAULT_ENTERPRISE_NUMBER = 32473;
     /**
      * The default event id.
      */
@@ -83,6 +87,11 @@ public final class Rfc5424Layout extends AbstractStringLayout {
      * Match characters which require escaping.
      */
     public static final Pattern PARAM_VALUE_ESCAPE_PATTERN = Pattern.compile("[\\\"\\]\\\\]");
+
+    /**
+     * For now, avoid too restrictive OID checks to allow for easier transition
+     */
+    public static final Pattern ENTERPRISE_ID_PATTERN = Pattern.compile("\\d+(\\.\\d+)*");
 
     /**
      * Default MDC ID: {@value} .
@@ -98,7 +107,7 @@ public final class Rfc5424Layout extends AbstractStringLayout {
 
     private final Facility facility;
     private final String defaultId;
-    private final int enterpriseNumber;
+    private final String enterpriseNumber;
     private final boolean includeMdc;
     private final String mdcId;
     private final StructuredDataId mdcSdId;
@@ -112,7 +121,6 @@ public final class Rfc5424Layout extends AbstractStringLayout {
     private final List<String> mdcIncludes;
     private final List<String> mdcRequired;
     private final ListChecker listChecker;
-    private final ListChecker noopChecker = new NoopChecker();
     private final boolean includeNewLine;
     private final String escapeNewLine;
     private final boolean useTlsMessageFormat;
@@ -124,11 +132,11 @@ public final class Rfc5424Layout extends AbstractStringLayout {
     private final Map<String, FieldFormatter> fieldFormatters;
     private final String procId;
 
-    private Rfc5424Layout(final Configuration config, final Facility facility, final String id, final int ein,
-            final boolean includeMDC, final boolean includeNL, final String escapeNL, final String mdcId,
-            final String mdcPrefix, final String eventPrefix, final String appName, final String messageId,
-            final String excludes, final String includes, final String required, final Charset charset,
-            final String exceptionPattern, final boolean useTLSMessageFormat, final LoggerFields[] loggerFields) {
+    private Rfc5424Layout(final Configuration config, final Facility facility, final String id, final String ein,
+              final boolean includeMDC, final boolean includeNL, final String escapeNL, final String mdcId,
+              final String mdcPrefix, final String eventPrefix, final String appName, final String messageId,
+              final String excludes, final String includes, final String required, final Charset charset,
+              final String exceptionPattern, final boolean useTLSMessageFormat, final LoggerFields[] loggerFields) {
         super(charset);
         final PatternParser exceptionParser = createPatternParser(config, ThrowablePatternConverter.class);
         exceptionFormatters = exceptionPattern == null ? null : exceptionParser.parse(exceptionPattern);
@@ -138,20 +146,20 @@ public final class Rfc5424Layout extends AbstractStringLayout {
         this.includeMdc = includeMDC;
         this.includeNewLine = includeNL;
         this.escapeNewLine = escapeNL == null ? null : Matcher.quoteReplacement(escapeNL);
-        this.mdcId = id == null ? DEFAULT_MDCID : id;
-        this.mdcSdId = new StructuredDataId(mdcId, enterpriseNumber, null, null);
+        this.mdcId = mdcId != null ? mdcId : id == null ? DEFAULT_MDCID : id;
+        this.mdcSdId = new StructuredDataId(this.mdcId, enterpriseNumber, null, null);
         this.mdcPrefix = mdcPrefix;
         this.eventPrefix = eventPrefix;
         this.appName = appName;
         this.messageId = messageId;
         this.useTlsMessageFormat = useTLSMessageFormat;
         this.localHostName = NetUtils.getLocalHostname();
-        ListChecker c = null;
+        ListChecker checker = null;
         if (excludes != null) {
             final String[] array = excludes.split(Patterns.COMMA_SEPARATOR);
             if (array.length > 0) {
-                c = new ExcludeChecker();
                 mdcExcludes = new ArrayList<>(array.length);
+                checker = new ExcludeChecker(mdcExcludes);
                 for (final String str : array) {
                     mdcExcludes.add(str.trim());
                 }
@@ -164,8 +172,8 @@ public final class Rfc5424Layout extends AbstractStringLayout {
         if (includes != null) {
             final String[] array = includes.split(Patterns.COMMA_SEPARATOR);
             if (array.length > 0) {
-                c = new IncludeChecker();
                 mdcIncludes = new ArrayList<>(array.length);
+                checker = new IncludeChecker(mdcIncludes);
                 for (final String str : array) {
                     mdcIncludes.add(str.trim());
                 }
@@ -189,7 +197,7 @@ public final class Rfc5424Layout extends AbstractStringLayout {
         } else {
             mdcRequired = null;
         }
-        this.listChecker = c != null ? c : noopChecker;
+        this.listChecker = checker != null ? checker : ListChecker.NOOP_CHECKER;
         final String name = config == null ? null : config.getName();
         configName = Strings.isNotEmpty(name) ? name : null;
         this.fieldFormatters = createFieldFormatters(loggerFields, config);
@@ -259,7 +267,7 @@ public final class Rfc5424Layout extends AbstractStringLayout {
     }
 
     /**
-     * Formats a {@link org.apache.logging.log4j.core.LogEvent} in conformance with the RFC 5424 Syslog specification.
+     * Formats a {@link LogEvent} in conformance with the RFC 5424 Syslog specification.
      *
      * @param event The LogEvent.
      * @return The RFC 5424 String representation of the LogEvent.
@@ -391,7 +399,7 @@ public final class Rfc5424Layout extends AbstractStringLayout {
 
         if (isStructured) {
             if (message instanceof MessageCollectionMessage) {
-                for (StructuredDataMessage data : ((StructuredDataCollectionMessage)message)) {
+                for (final StructuredDataMessage data : ((StructuredDataCollectionMessage)message)) {
                     addStructuredData(sdElements, data);
                 }
             } else {
@@ -444,7 +452,7 @@ public final class Rfc5424Layout extends AbstractStringLayout {
     }
 
     private String computeTimeStampString(final long now) {
-        long last;
+        final long last;
         synchronized (this) {
             last = lastTimestamp;
             if (now == lastTimestamp) {
@@ -513,7 +521,7 @@ public final class Rfc5424Layout extends AbstractStringLayout {
         sb.append('[');
         sb.append(id);
         if (!mdcSdId.toString().equals(id)) {
-            appendMap(data.getPrefix(), data.getFields(), sb, noopChecker);
+            appendMap(data.getPrefix(), data.getFields(), sb, ListChecker.NOOP_CHECKER);
         } else {
             appendMap(data.getPrefix(), data.getFields(), sb, checker);
         }
@@ -527,11 +535,11 @@ public final class Rfc5424Layout extends AbstractStringLayout {
         } else {
             sb.append(id.getName());
         }
-        int ein = id != null ? id.getEnterpriseNumber() : enterpriseNumber;
-        if (ein < 0) {
+        String ein = id != null ? id.getEnterpriseNumber() : enterpriseNumber;
+        if (StructuredDataId.RESERVED.equals(ein)) {
             ein = enterpriseNumber;
         }
-        if (ein >= 0) {
+        if (!StructuredDataId.RESERVED.equals(ein)) {
             sb.append('@').append(ein);
         }
         return sb.toString();
@@ -564,43 +572,6 @@ public final class Rfc5424Layout extends AbstractStringLayout {
 
     private String escapeSDParams(final String value) {
         return PARAM_VALUE_ESCAPE_PATTERN.matcher(value).replaceAll("\\\\$0");
-    }
-
-    /**
-     * Interface used to check keys in a Map.
-     */
-    private interface ListChecker {
-        boolean check(String key);
-    }
-
-    /**
-     * Includes only the listed keys.
-     */
-    private class IncludeChecker implements ListChecker {
-        @Override
-        public boolean check(final String key) {
-            return mdcIncludes.contains(key);
-        }
-    }
-
-    /**
-     * Excludes the listed keys.
-     */
-    private class ExcludeChecker implements ListChecker {
-        @Override
-        public boolean check(final String key) {
-            return !mdcExcludes.contains(key);
-        }
-    }
-
-    /**
-     * Does nothing.
-     */
-    private class NoopChecker implements ListChecker {
-        @Override
-        public boolean check(final String key) {
-            return true;
-        }
     }
 
     @Override
@@ -639,6 +610,7 @@ public final class Rfc5424Layout extends AbstractStringLayout {
      * @param loggerFields Container for the KeyValuePairs containing the patterns
      * @param config The Configuration. Some Converters require access to the Interpolator.
      * @return An Rfc5424Layout.
+     * @deprecated Use {@link Rfc5424LayoutBuilder instead}
      */
     @PluginFactory
     public static Rfc5424Layout createLayout(
@@ -653,15 +625,15 @@ public final class Rfc5424Layout extends AbstractStringLayout {
             @PluginAttribute("eventPrefix") final String eventPrefix,
             @PluginAttribute(value = "newLine") final boolean newLine,
             @PluginAttribute("newLineEscape") final String escapeNL,
-            @PluginAttribute("appName") final String appName,
+            @PluginAttribute final String appName,
             @PluginAttribute("messageId") final String msgId,
             @PluginAttribute("mdcExcludes") final String excludes,
             @PluginAttribute("mdcIncludes") String includes,
             @PluginAttribute("mdcRequired") final String required,
-            @PluginAttribute("exceptionPattern") final String exceptionPattern,
+            @PluginAttribute final String exceptionPattern,
             // RFC 5425
-            @PluginAttribute(value = "useTlsMessageFormat") final boolean useTlsMessageFormat,
-            @PluginElement("LoggerFields") final LoggerFields[] loggerFields,
+            @PluginAttribute final boolean useTlsMessageFormat,
+            @PluginElement final LoggerFields[] loggerFields,
             @PluginConfiguration final Configuration config) {
         // @formatter:on
         if (includes != null && excludes != null) {
@@ -669,9 +641,140 @@ public final class Rfc5424Layout extends AbstractStringLayout {
             includes = null;
         }
 
-        return new Rfc5424Layout(config, facility, id, enterpriseNumber, includeMDC, newLine, escapeNL, mdcId,
+        return new Rfc5424Layout(config, facility, id, String.valueOf(enterpriseNumber), includeMDC, newLine, escapeNL, mdcId,
                 mdcPrefix, eventPrefix, appName, msgId, excludes, includes, required, StandardCharsets.UTF_8,
                 exceptionPattern, useTlsMessageFormat, loggerFields);
+    }
+
+    public static class Rfc5424LayoutBuilder {
+        private Configuration config;
+        private Facility facility = Facility.LOCAL0;
+        private String id;
+        private String ein = String.valueOf(DEFAULT_ENTERPRISE_NUMBER);
+        private boolean includeMDC = true;
+        private boolean includeNL;
+        private String escapeNL;
+        private String mdcId = DEFAULT_MDCID;
+        private String mdcPrefix;
+        private String eventPrefix;
+        private String appName;
+        private String messageId;
+        private String excludes;
+        private String includes;
+        private String required;
+        private Charset charset;
+        private String exceptionPattern;
+        private boolean useTLSMessageFormat;
+        private LoggerFields[] loggerFields;
+
+        public Rfc5424LayoutBuilder setConfig(Configuration config) {
+            this.config = config;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setFacility(Facility facility) {
+            this.facility = facility;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setId(String id) {
+            this.id = id;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setEin(String ein) {
+            this.ein = ein;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setIncludeMDC(boolean includeMDC) {
+            this.includeMDC = includeMDC;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setIncludeNL(boolean includeNL) {
+            this.includeNL = includeNL;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setEscapeNL(String escapeNL) {
+            this.escapeNL = escapeNL;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setMdcId(String mdcId) {
+            this.mdcId = mdcId;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setMdcPrefix(String mdcPrefix) {
+            this.mdcPrefix = mdcPrefix;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setEventPrefix(String eventPrefix) {
+            this.eventPrefix = eventPrefix;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setAppName(String appName) {
+            this.appName = appName;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setMessageId(String messageId) {
+            this.messageId = messageId;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setExcludes(String excludes) {
+            this.excludes = excludes;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setIncludes(String includes) {
+            this.includes = includes;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setRequired(String required) {
+            this.required = required;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setCharset(Charset charset) {
+            this.charset = charset;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setExceptionPattern(String exceptionPattern) {
+            this.exceptionPattern = exceptionPattern;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setUseTLSMessageFormat(boolean useTLSMessageFormat) {
+            this.useTLSMessageFormat = useTLSMessageFormat;
+            return this;
+        }
+
+        public Rfc5424LayoutBuilder setLoggerFields(LoggerFields[] loggerFields) {
+            this.loggerFields = loggerFields;
+            return this;
+        }
+
+        public Rfc5424Layout build() {
+            if (includes != null && excludes != null) {
+                LOGGER.error("mdcIncludes and mdcExcludes are mutually exclusive. Includes wil be ignored");
+                includes = null;
+            }
+
+            if (ein != null && !ENTERPRISE_ID_PATTERN.matcher(ein).matches()) {
+                LOGGER.warn(String.format("provided EID %s is not in valid format!", ein));
+                return null;
+            }
+
+            return new Rfc5424Layout(config, facility, id, ein, includeMDC, includeNL, escapeNL, mdcId, mdcPrefix, eventPrefix, appName, messageId, excludes, includes, required, charset, exceptionPattern, useTLSMessageFormat, loggerFields);
+        }
     }
 
     private class FieldFormatter {
@@ -741,4 +844,21 @@ public final class Rfc5424Layout extends AbstractStringLayout {
     public Facility getFacility() {
         return facility;
     }
+
+    public String getDefaultId() {
+        return defaultId;
+    }
+
+    public String getEnterpriseNumber() {
+        return enterpriseNumber;
+    }
+
+    public boolean isIncludeMdc() {
+        return includeMdc;
+    }
+
+    public String getMdcId() {
+        return mdcId;
+    }
+
 }

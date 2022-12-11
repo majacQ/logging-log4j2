@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <!--
  Licensed to the Apache Software Foundation (ASF) under one or more
  contributor license agreements.  See the NOTICE file distributed with
@@ -27,12 +27,14 @@
   <name>Apache Log4j Samples: Flume - Embedded</name>
   <url>http://maven.apache.org</url>
   <properties>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <log4jParentDir>${basedir}/../..</log4jParentDir>
+    <module.name>org.apache.logging.log4j.samples.flume.embedded</module.name>
   </properties>
   <dependencies>
     <dependency>
-      <groupId>org.apache.logging.log4j.samples</groupId>
-      <artifactId>log4j-samples-flume-common</artifactId>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.logging.log4j</groupId>
@@ -47,6 +49,10 @@
       <artifactId>log4j-flume-ng</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.apache.flume.flume-ng-channels</groupId>
+      <artifactId>flume-file-channel</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.apache.flume</groupId>
       <artifactId>flume-ng-node</artifactId>
     </dependency>
@@ -55,8 +61,8 @@
       <artifactId>hadoop-core</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.apache.flume.flume-ng-channels</groupId>
-      <artifactId>flume-file-channel</artifactId>
+      <groupId>org.apache.logging.log4j.samples</groupId>
+      <artifactId>log4j-samples-flume-common</artifactId>
     </dependency>
     <dependency>
       <groupId>org.springframework</groupId>
@@ -73,11 +79,6 @@
     <dependency>
       <groupId>org.springframework.ws</groupId>
       <artifactId>spring-ws-core</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>javax.servlet</groupId>
-      <artifactId>servlet-api</artifactId>
-      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
@@ -103,15 +104,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-install-plugin</artifactId>
-        <version>2.5.2</version>
-        <configuration>
-          <skip>true</skip>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-deploy-plugin</artifactId>
-        <version>${deploy.plugin.version}</version>
         <configuration>
           <skip>true</skip>
         </configuration>
@@ -119,7 +111,6 @@
       <plugin>
         <groupId>org.mortbay.jetty</groupId>
         <artifactId>maven-jetty-plugin</artifactId>
-        <version>6.1.26</version>
         <configuration>
           <contextPath>flumeAgent</contextPath>
           <webXml>${project.build.directory}/web.xml</webXml>
@@ -132,18 +123,6 @@
               <value>${project.build.directory}/logs</value>
             </systemProperty>
           </systemProperties>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.felix</groupId>
-        <artifactId>maven-bundle-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-deploy-plugin</artifactId>
-        <version>${deploy.plugin.version}</version>
-        <configuration>
-          <skip>true</skip>
         </configuration>
       </plugin>
     </plugins>

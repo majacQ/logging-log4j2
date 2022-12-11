@@ -20,14 +20,15 @@ package org.apache.logging.log4j.core.lookup;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
+import org.apache.logging.log4j.plugins.Plugin;
 
 /**
  * Looks-up markers.
- * 
+ *
  * @since 2.4
  */
-@Plugin(name = "marker", category = StrLookup.CATEGORY)
+@Lookup
+@Plugin("marker")
 public class MarkerLookup extends AbstractLookup {
 
     static final String MARKER = "marker";

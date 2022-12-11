@@ -16,27 +16,28 @@
  */
 package org.apache.logging.log4j.core.appender.rolling;
 
-import java.text.ParseException;
-import java.util.Date;
-import java.util.Objects;
-import java.util.concurrent.TimeUnit;
-
-import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationScheduler;
 import org.apache.logging.log4j.core.config.CronScheduledFuture;
 import org.apache.logging.log4j.core.config.Scheduled;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.util.CronExpression;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
+import java.text.ParseException;
+import java.util.Date;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Rolls a file over based on a cron schedule.
  */
-@Plugin(name = "CronTriggeringPolicy", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 @Scheduled
 public final class CronTriggeringPolicy extends AbstractTriggeringPolicy {
 
@@ -57,7 +58,7 @@ public final class CronTriggeringPolicy extends AbstractTriggeringPolicy {
 
     /**
      * Initializes the policy.
-     * 
+     *
      * @param aManager
      *            The RollingFileManager.
      */
@@ -70,6 +71,7 @@ public final class CronTriggeringPolicy extends AbstractTriggeringPolicy {
         aManager.getPatternProcessor().setCurrentFileTime(lastRegularRoll.getTime());
         LOGGER.debug("LastRollForFile {}, LastRegularRole {}", lastRollForFile, lastRegularRoll);
         aManager.getPatternProcessor().setPrevFileTime(lastRegularRoll.getTime());
+        aManager.getPatternProcessor().setTimeBased(true);
         if (checkOnStartup && lastRollForFile != null && lastRegularRoll != null &&
                 lastRollForFile.before(lastRegularRoll)) {
             lastRollDate = lastRollForFile;
@@ -91,7 +93,7 @@ public final class CronTriggeringPolicy extends AbstractTriggeringPolicy {
 
     /**
      * Determines whether a rollover should occur.
-     * 
+     *
      * @param event
      *            A reference to the currently event.
      * @return true if a rollover should occur.
@@ -107,7 +109,7 @@ public final class CronTriggeringPolicy extends AbstractTriggeringPolicy {
 
     /**
      * Creates a ScheduledTriggeringPolicy.
-     * 
+     *
      * @param configuration
      *            the Configuration.
      * @param evaluateOnStartup
@@ -118,8 +120,8 @@ public final class CronTriggeringPolicy extends AbstractTriggeringPolicy {
      */
     @PluginFactory
     public static CronTriggeringPolicy createPolicy(@PluginConfiguration final Configuration configuration,
-            @PluginAttribute("evaluateOnStartup") final String evaluateOnStartup,
-            @PluginAttribute("schedule") final String schedule) {
+            @PluginAttribute final String evaluateOnStartup,
+            @PluginAttribute final String schedule) {
         CronExpression cronExpression;
         final boolean checkOnStartup = Boolean.parseBoolean(evaluateOnStartup);
         if (schedule == null) {
@@ -145,10 +147,7 @@ public final class CronTriggeringPolicy extends AbstractTriggeringPolicy {
     }
 
     private void rollover() {
-        manager.getPatternProcessor().setPrevFileTime(lastRollDate.getTime());
-        final Date thisRoll = cronExpression.getPrevFireTime(new Date());
-        manager.getPatternProcessor().setCurrentFileTime(thisRoll.getTime());
-        manager.rollover();
+		manager.rollover(cronExpression.getPrevFireTime(new Date()).getTime(), lastRollDate.getTime());
         if (future != null) {
             lastRollDate = future.getFireTime();
         }

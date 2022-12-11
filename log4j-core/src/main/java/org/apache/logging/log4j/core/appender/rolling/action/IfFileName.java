@@ -16,6 +16,14 @@
  */
 package org.apache.logging.log4j.core.appender.rolling.action;
 
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.status.StatusLogger;
+
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -26,14 +34,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.status.StatusLogger;
-
 /**
  * PathCondition that accepts files for deletion if their relative path matches either a glob pattern or a regular
  * expression. If both a regular expression and a glob pattern are specified the glob pattern is used and the regular
@@ -42,7 +42,8 @@ import org.apache.logging.log4j.status.StatusLogger;
  * The regular expression is a pattern as defined by the {@link Pattern} class. A glob is a simplified pattern
  * expression described in {@link FileSystem#getPathMatcher(String)}.
  */
-@Plugin(name = "IfFileName", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public final class IfFileName implements PathCondition {
     private static final Logger LOGGER = StatusLogger.getLogger();
     private final PathMatcher pathMatcher;
@@ -52,20 +53,19 @@ public final class IfFileName implements PathCondition {
     /**
      * Constructs a FileNameFilter filter. If both a regular expression and a glob pattern are specified the glob
      * pattern is used and the regular expression is ignored.
-     * 
+     *
      * @param glob the baseDir-relative path pattern of the files to delete (may contain '*' and '?' wildcarts)
      * @param regex the regular expression that matches the baseDir-relative path of the file(s) to delete
      * @param nestedConditions nested conditions to evaluate if this condition accepts a path
      */
-    private IfFileName(final String glob, final String regex, final PathCondition[] nestedConditions) {
+    private IfFileName(final String glob, final String regex, final PathCondition... nestedConditions) {
         if (regex == null && glob == null) {
             throw new IllegalArgumentException("Specify either a path glob or a regular expression. "
                     + "Both cannot be null.");
         }
         this.syntaxAndPattern = createSyntaxAndPatternString(glob, regex);
         this.pathMatcher = FileSystems.getDefault().getPathMatcher(syntaxAndPattern);
-        this.nestedConditions = nestedConditions == null ? new PathCondition[0] : Arrays.copyOf(nestedConditions,
-                nestedConditions.length);
+        this.nestedConditions = PathCondition.copy(nestedConditions);
     }
 
     static String createSyntaxAndPatternString(final String glob, final String regex) {
@@ -80,7 +80,7 @@ public final class IfFileName implements PathCondition {
      * {@code syntax:pattern} where syntax is one of "glob" or "regex" and the pattern is either a {@linkplain Pattern
      * regular expression} or a simplified pattern expression described under "glob" in
      * {@link FileSystem#getPathMatcher(String)}.
-     * 
+     *
      * @return relative path of the file(s) to delete (may contain regular expression or wildcarts)
      */
     public String getSyntaxAndPattern() {
@@ -93,7 +93,7 @@ public final class IfFileName implements PathCondition {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.PathCondition#accept(java.nio.file.Path,
      * java.nio.file.Path, java.nio.file.attribute.BasicFileAttributes)
      */
@@ -112,7 +112,7 @@ public final class IfFileName implements PathCondition {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.PathCondition#beforeFileTreeWalk()
      */
     @Override
@@ -125,7 +125,7 @@ public final class IfFileName implements PathCondition {
      * {@linkplain FileSystem#getPathMatcher(String) glob pattern} or the regular expression matches the relative path.
      * If both a regular expression and a glob pattern are specified the glob pattern is used and the regular expression
      * is ignored.
-     * 
+     *
      * @param glob the baseDir-relative path pattern of the files to delete (may contain '*' and '?' wildcarts)
      * @param regex the regular expression that matches the baseDir-relative path of the file(s) to delete
      * @param nestedConditions nested conditions to evaluate if this condition accepts a path
@@ -133,10 +133,10 @@ public final class IfFileName implements PathCondition {
      * @see FileSystem#getPathMatcher(String)
      */
     @PluginFactory
-    public static IfFileName createNameCondition( 
+    public static IfFileName createNameCondition(
             // @formatter:off
-            @PluginAttribute("glob") final String glob, 
-            @PluginAttribute("regex") final String regex, 
+            @PluginAttribute final String glob,
+            @PluginAttribute final String regex,
             @PluginElement("PathConditions") final PathCondition... nestedConditions) {
             // @formatter:on
         return new IfFileName(glob, regex, nestedConditions);

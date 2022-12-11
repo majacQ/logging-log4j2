@@ -16,19 +16,20 @@
  */
 package org.apache.logging.log4j.core.appender.rolling.action;
 
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-
 /**
  * Wrapper {@code PathCondition} that accepts objects that are rejected by the wrapped component filter.
  */
-@Plugin(name = "IfNot", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public final class IfNot implements PathCondition {
 
     private final PathCondition negate;
@@ -61,12 +62,12 @@ public final class IfNot implements PathCondition {
 
     /**
      * Create an IfNot PathCondition.
-     * 
+     *
      * @param condition The condition to negate.
      * @return An IfNot PathCondition.
      */
     @PluginFactory
-    public static IfNot createNotCondition( 
+    public static IfNot createNotCondition(
             @PluginElement("PathConditions") final PathCondition condition) {
         return new IfNot(condition);
     }

@@ -29,16 +29,16 @@ import java.util.TimeZone;
  * <p>FastDateFormat is a fast and thread-safe version of
  * {@link java.text.SimpleDateFormat}.</p>
  *
- * <p>To obtain an instance of FastDateFormat, use one of the static factory methods: 
- * {@link #getInstance(String, TimeZone, Locale)}, {@link #getDateInstance(int, TimeZone, Locale)}, 
- * {@link #getTimeInstance(int, TimeZone, Locale)}, or {@link #getDateTimeInstance(int, int, TimeZone, Locale)} 
+ * <p>To obtain an instance of FastDateFormat, use one of the static factory methods:
+ * {@link #getInstance(String, TimeZone, Locale)}, {@link #getDateInstance(int, TimeZone, Locale)},
+ * {@link #getTimeInstance(int, TimeZone, Locale)}, or {@link #getDateTimeInstance(int, int, TimeZone, Locale)}
  * </p>
- * 
+ *
  * <p>Since FastDateFormat is thread safe, you can use a static member instance:</p>
  * <code>
  *   private static final FastDateFormat DATE_FORMATTER = FastDateFormat.getDateTimeInstance(FastDateFormat.LONG, FastDateFormat.SHORT);
  * </code>
- * 
+ *
  * <p>This class can be used as a direct replacement to
  * {@code SimpleDateFormat} in most formatting and parsing situations.
  * This class is especially useful in multi-threaded server environments.
@@ -65,15 +65,15 @@ import java.util.TimeZone;
  * interpreted as a number.</i> Starting with Java 1.7 a pattern of 'Y' or
  * 'YYY' will be formatted as '2003', while it was '03' in former Java
  * versions. FastDateFormat implements the behavior of Java 7.</p>
- * 
+ *
  * <p>
  * Copied and modified from <a href="https://commons.apache.org/proper/commons-lang/">Apache Commons Lang</a>.
  * </p>
- * 
+ *
  * @since Apache Commons Lang 2.0
  */
 public class FastDateFormat extends Format implements DateParser, DatePrinter {
-    
+
     /**
      * Required for serialization support.
      *
@@ -86,14 +86,17 @@ public class FastDateFormat extends Format implements DateParser, DatePrinter {
      * FULL locale dependent date or time style.
      */
     public static final int FULL = DateFormat.FULL;
+
     /**
      * LONG locale dependent date or time style.
      */
     public static final int LONG = DateFormat.LONG;
+
     /**
      * MEDIUM locale dependent date or time style.
      */
     public static final int MEDIUM = DateFormat.MEDIUM;
+
     /**
      * SHORT locale dependent date or time style.
      */
@@ -367,6 +370,20 @@ public class FastDateFormat extends Format implements DateParser, DatePrinter {
     public static FastDateFormat getDateTimeInstance(
             final int dateStyle, final int timeStyle, final TimeZone timeZone, final Locale locale) {
         return cache.getDateTimeInstance(dateStyle, timeStyle, timeZone, locale);
+    }
+
+    /**
+     * <p>Constructs a new FastDateFormat.</p>
+     *
+     * @param pattern  {@link java.text.SimpleDateFormat} compatible pattern
+     * @param timeZone  non-null time zone to use
+     * @param locale  non-null locale to use
+     * @param centuryStart The start of the 100 year period to use as the "default century" for 2 digit year parsing.  If centuryStart is null, defaults to now - 80 years
+     * @throws NullPointerException if pattern, timeZone, or locale is null.
+     * @since 3.0
+     */
+    public static FastDateFormat getDateTimeInstance(final String pattern, final TimeZone timeZone, final Locale locale, final Date centuryStart) {
+        return new FastDateFormat(pattern, timeZone, locale, centuryStart);
     }
 
     // Constructor

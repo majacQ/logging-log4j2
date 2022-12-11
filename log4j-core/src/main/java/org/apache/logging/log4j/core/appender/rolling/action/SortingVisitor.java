@@ -17,8 +17,12 @@
 
 package org.apache.logging.log4j.core.appender.rolling.action;
 
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.status.StatusLogger;
+
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -32,12 +36,13 @@ import java.util.Objects;
  */
 public class SortingVisitor extends SimpleFileVisitor<Path> {
 
+    private static final Logger LOGGER = StatusLogger.getLogger();
     private final PathSorter sorter;
     private final List<PathWithAttributes> collected = new ArrayList<>();
 
     /**
      * Constructs a new DeletingVisitor.
-     * 
+     *
      * @param basePath used to relativize paths
      * @param pathFilters objects that need to confirm whether a file can be deleted
      */
@@ -50,7 +55,19 @@ public class SortingVisitor extends SimpleFileVisitor<Path> {
         collected.add(new PathWithAttributes(path, attrs));
         return FileVisitResult.CONTINUE;
     }
-    
+
+    @Override
+    public FileVisitResult visitFileFailed(final Path file, final IOException ioException) throws IOException {
+        // LOG4J2-2677: Appenders may rollover and purge in parallel. SimpleVisitor rethrows exceptions from
+        // failed attempts to load file attributes.
+        if (ioException instanceof NoSuchFileException) {
+            LOGGER.info("File {} could not be accessed, it has likely already been deleted", file, ioException);
+            return FileVisitResult.CONTINUE;
+        } else {
+            return super.visitFileFailed(file, ioException);
+        }
+    }
+
     public List<PathWithAttributes> getSortedPaths() {
         Collections.sort(collected, sorter);
         return collected;

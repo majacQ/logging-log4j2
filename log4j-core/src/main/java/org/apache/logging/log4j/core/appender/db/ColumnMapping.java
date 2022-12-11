@@ -16,36 +16,42 @@
  */
 package org.apache.logging.log4j.core.appender.db;
 
-import java.util.Date;
-
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.StringLayout;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
 import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.Required;
 import org.apache.logging.log4j.core.layout.PatternLayout;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Inject;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.convert.TypeConverter;
+import org.apache.logging.log4j.plugins.di.Injector;
+import org.apache.logging.log4j.plugins.validation.constraints.Required;
 import org.apache.logging.log4j.spi.ThreadContextMap;
 import org.apache.logging.log4j.spi.ThreadContextStack;
 import org.apache.logging.log4j.status.StatusLogger;
 import org.apache.logging.log4j.util.ReadOnlyStringMap;
+
+import java.util.Date;
+import java.util.Locale;
+import java.util.function.Supplier;
 
 /**
  * A configuration element for specifying a database column name mapping.
  *
  * @since 2.8
  */
-@Plugin(name = "ColumnMapping", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public class ColumnMapping {
 
     /**
      * Builder for {@link ColumnMapping}.
      */
-    public static class Builder implements org.apache.logging.log4j.core.util.Builder<ColumnMapping> {
+    public static class Builder implements org.apache.logging.log4j.plugins.util.Builder<ColumnMapping> {
 
         @PluginConfiguration
         private Configuration configuration;
@@ -73,12 +79,15 @@ public class ColumnMapping {
         @Required(message = "No conversion type provided")
         private Class<?> type = String.class;
 
+        private Injector injector;
+
         @Override
         public ColumnMapping build() {
             if (pattern != null) {
                 layout = PatternLayout.newBuilder()
-                    .withPattern(pattern)
-                    .withConfiguration(configuration)
+                    .setPattern(pattern)
+                    .setConfiguration(configuration)
+                    .setAlwaysWriteExceptions(false)
                     .build();
             }
             if (!(layout == null
@@ -94,7 +103,7 @@ public class ColumnMapping {
                 LOGGER.error("Only one of 'literal' or 'parameter' can be set on the column mapping {}", this);
                 return null;
             }
-            return new ColumnMapping(name, source, layout, literal, parameter, type);
+            return new ColumnMapping(name, source, layout, literal, parameter, type, () -> injector.getTypeConverter(type));
         }
 
         public Builder setConfiguration(final Configuration configuration) {
@@ -105,8 +114,8 @@ public class ColumnMapping {
         /**
          * Layout of value to write to database (before type conversion). Not applicable if {@link #setType(Class)} is
          * a {@link ReadOnlyStringMap}, {@link ThreadContextMap}, or {@link ThreadContextStack}.
-         * 
-         * @return this. 
+         *
+         * @return this.
          */
         public Builder setLayout(final StringLayout layout) {
             this.layout = layout;
@@ -116,8 +125,8 @@ public class ColumnMapping {
         /**
          * Literal value to use for populating a column. This is generally useful for functions, stored procedures,
          * etc. No escaping will be done on this value.
-         * 
-         * @return this. 
+         *
+         * @return this.
          */
         public Builder setLiteral(final String literal) {
             this.literal = literal;
@@ -126,8 +135,8 @@ public class ColumnMapping {
 
         /**
          * Column name.
-         * 
-         * @return this. 
+         *
+         * @return this.
          */
         public Builder setName(final String name) {
             this.name = name;
@@ -137,8 +146,8 @@ public class ColumnMapping {
         /**
          * Parameter value to use for populating a column, MUST contain a single parameter marker '?'. This is generally useful for functions, stored procedures,
          * etc. No escaping will be done on this value.
-         * 
-         * @return this. 
+         *
+         * @return this.
          */
         public Builder setParameter(final String parameter) {
             this.parameter= parameter;
@@ -148,8 +157,8 @@ public class ColumnMapping {
         /**
          * Pattern to use as a {@link PatternLayout}. Convenient shorthand for {@link #setLayout(StringLayout)} with a
          * PatternLayout.
-         * 
-         * @return this. 
+         *
+         * @return this.
          */
         public Builder setPattern(final String pattern) {
             this.pattern = pattern;
@@ -159,7 +168,7 @@ public class ColumnMapping {
         /**
          * Source name. Useful when combined with a {@link org.apache.logging.log4j.message.MapMessage} depending on the
          * appender.
-         * 
+         *
          * @return this.
          */
         public Builder setSource(final String source) {
@@ -171,11 +180,17 @@ public class ColumnMapping {
          * Class to convert value to before storing in database. If the type is compatible with {@link ThreadContextMap} or
          * {@link ReadOnlyStringMap}, then the MDC will be used. If the type is compatible with {@link ThreadContextStack},
          * then the NDC will be used. If the type is compatible with {@link Date}, then the event timestamp will be used.
-         * 
-         * @return this. 
+         *
+         * @return this.
          */
         public Builder setType(final Class<?> type) {
             this.type = type;
+            return this;
+        }
+
+        @Inject
+        public Builder setInjector(final Injector injector) {
+            this.injector = injector;
             return this;
         }
 
@@ -187,25 +202,36 @@ public class ColumnMapping {
     }
 
     private static final Logger LOGGER = StatusLogger.getLogger();
-    @PluginBuilderFactory
+
+    @PluginFactory
     public static Builder newBuilder() {
         return new Builder();
     }
-    
+
+    public static String toKey(final String name) {
+        return name.toUpperCase(Locale.ROOT);
+    }
+
     private final StringLayout layout;
     private final String literalValue;
     private final String name;
+    private final String nameKey;
     private final String parameter;
     private final String source;
     private final Class<?> type;
+    private final Supplier<TypeConverter<?>> typeConverter;
 
-    private ColumnMapping(final String name, final String source, final StringLayout layout, final String literalValue, final String parameter, final Class<?> type) {
+    private ColumnMapping(
+            final String name, final String source, final StringLayout layout, final String literalValue,
+            final String parameter, final Class<?> type, final Supplier<TypeConverter<?>> typeConverter) {
         this.name = name;
+        this.nameKey = toKey(name);
         this.source = source;
         this.layout = layout;
         this.literalValue = literalValue;
         this.parameter = parameter;
         this.type = type;
+        this.typeConverter = typeConverter;
     }
 
     public StringLayout getLayout() {
@@ -220,6 +246,10 @@ public class ColumnMapping {
         return name;
     }
 
+    public String getNameKey() {
+        return nameKey;
+    }
+
     public String getParameter() {
         return parameter;
     }
@@ -230,6 +260,10 @@ public class ColumnMapping {
 
     public Class<?> getType() {
         return type;
+    }
+
+    public TypeConverter<?> getTypeConverter() {
+        return typeConverter.get();
     }
 
     @Override

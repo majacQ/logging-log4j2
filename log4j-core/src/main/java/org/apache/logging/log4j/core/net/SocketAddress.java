@@ -16,22 +16,23 @@
  */
 package org.apache.logging.log4j.core.net;
 
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.validation.constraints.ValidHost;
+import org.apache.logging.log4j.plugins.validation.constraints.ValidPort;
+
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.ValidHost;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.ValidPort;
 
 /**
  * Plugin to hold a hostname and port (socket address).
  *
  * @since 2.8
  */
-@Plugin(name = "SocketAddress", category = Node.CATEGORY, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public class SocketAddress {
 
     /**
@@ -66,12 +67,12 @@ public class SocketAddress {
         return socketAddress.getHostName();
     }
 
-    @PluginBuilderFactory
+    @PluginFactory
     public static Builder newBuilder() {
         return new Builder();
     }
 
-    public static class Builder implements org.apache.logging.log4j.core.util.Builder<SocketAddress> {
+    public static class Builder implements org.apache.logging.log4j.plugins.util.Builder<SocketAddress> {
 
         @PluginBuilderAttribute
         @ValidHost

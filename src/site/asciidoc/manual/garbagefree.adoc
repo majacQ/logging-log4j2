@@ -100,12 +100,16 @@ NOTE: As of version 2.6, a Log4j configuration containing a
 `<Properties>` section will result in temporary objects being created
 during steady-state logging.
 
-NOTE: The Async Logger Timeout wait strategy (the default) and the
-Block wait strategy cause
-`java.util.concurrent.locks.AbstractQueuedSynchronizer$Node` objects to
-be created. The Yield and Sleep wait strategies are garbage-free. (See
+NOTE:  as of version 2.18.0, the default Async Logger wait strategy used by Log4j
+(Timeout) is garbage-free. Some of the wait strategies included in LMAX disruptor 3.4.4,
+especially `TimeoutBlockingWaitStrategy` and `BlockingWaitStrategy` (Block)
+are not garbage-free since they
+cause `java.util.concurrent.locks.AbstractQueuedSynchronizer$Node` objects to be created.
+The default wait strategy used by Log4j uses a synchronized block instead of a ReentrantLock to avoid this problem.
+The Yield and Sleep wait strategies are garbage-free. (For configuring predefined wait strategies, see
 link:async.html#SysPropsAllAsync[here] and
-link:async.html#SysPropsMixedSync-Async[here].)
+link:async.html#SysPropsMixedSync-Async[here],
+you may also configure a link:async.html#WaitStrategy[custom wait strategy].)
 
 === Disabling Garbage-free Logging
 
@@ -165,7 +169,7 @@ objects for thread safety)
 * StructuredDataFilter (garbage free since 2.8)
 * ThreadContextMapFilter (garbage free since 2.8)
 * ThresholdFilter (garbage free since 2.8)
-* TimeFilter (garbage free since 2.8)
+* TimeFilter (garbage free since 2.8 except when range must be recalculated once per day)
 
 Other filters like BurstFilter, RegexFilter and ScriptFilter are not
 trivial to make garbage free, and there is currently no plan to change
@@ -178,6 +182,11 @@ them.
 
 GelfLayout is garbage-free when used with compressionType="OFF", as long
 as no additional field contains '${' (variable substitution).
+
+==== JsonTemplateLayout
+
+`JsonTemplateLayout` is garbage-free with
+link:json-template-layout.html#faq-garbage-free[a few exceptions].
 
 ==== PatternLayout
 
@@ -426,6 +435,8 @@ creates a vararg array. Logging a lambda expression by itself is
 garbage-free: `logger.debug(() -> callExpensiveMethod())`.
 * The `Logger.traceEntry` and `Logger.traceExit` methods create
 temporary objects.
+* Time calculations are not garbage free when log4j2.usePreciseClock is set to true.
+The default is false.
 ****
 
 [#Performance]

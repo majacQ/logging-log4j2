@@ -23,6 +23,7 @@ import static java.lang.Character.toLowerCase;
 /**
  * <em>Consider this class private.</em>
  */
+@InternalApi
 public final class StringBuilders {
     private StringBuilders() {
     }
@@ -35,7 +36,9 @@ public final class StringBuilders {
      * @return {@code "value"}
      */
     public static StringBuilder appendDqValue(final StringBuilder sb, final Object value) {
-        return sb.append(Chars.DQUOTE).append(value).append(Chars.DQUOTE);
+        sb.append(Chars.DQUOTE);
+        appendValue(sb, value);
+        return sb.append(Chars.DQUOTE);
     }
 
     /**
@@ -58,7 +61,25 @@ public final class StringBuilders {
      * @return the specified StringBuilder
      */
     public static StringBuilder appendKeyDqValue(final StringBuilder sb, final String key, final Object value) {
-        return sb.append(key).append(Chars.EQ).append(Chars.DQUOTE).append(value).append(Chars.DQUOTE);
+        sb.append(key).append(Chars.EQ);
+        return appendDqValue(sb, value);
+    }
+
+    /**
+     * Appends a {@code key="value"} preceded by a joiner sequence when the given StringBuilder is non-empty.
+     *
+     * @param sb     a string builder
+     * @param key    a key
+     * @param value  a value
+     * @param joiner a joining sequence to append when non-empty
+     * @return the string builder provided
+     */
+    public static StringBuilder appendKeyDqValueWithJoiner(
+            final StringBuilder sb, final String key, final Object value, final CharSequence joiner) {
+        if (sb.length() > 0) {
+            sb.append(joiner);
+        }
+        return appendKeyDqValue(sb, key, value);
     }
 
     /**
@@ -189,7 +210,7 @@ public final class StringBuilders {
             }
         }
 
-        int lastChar = toAppendTo.length() - 1;
+        final int lastChar = toAppendTo.length() - 1;
         toAppendTo.setLength(toAppendTo.length() + escapeCount);
         int lastPos = toAppendTo.length() - 1;
 
@@ -238,7 +259,7 @@ public final class StringBuilders {
         }
     }
 
-    private static int escapeAndDecrement(StringBuilder toAppendTo, int lastPos, char c) {
+    private static int escapeAndDecrement(final StringBuilder toAppendTo, int lastPos, final char c) {
         toAppendTo.setCharAt(lastPos--, c);
         toAppendTo.setCharAt(lastPos--, '\\');
         return lastPos;
@@ -262,7 +283,7 @@ public final class StringBuilders {
             }
         }
 
-        int lastChar = toAppendTo.length() - 1;
+        final int lastChar = toAppendTo.length() - 1;
         toAppendTo.setLength(toAppendTo.length() + escapeCount);
         int lastPos = toAppendTo.length() - 1;
 

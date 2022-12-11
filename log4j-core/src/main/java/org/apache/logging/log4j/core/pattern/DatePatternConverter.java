@@ -18,24 +18,28 @@ package org.apache.logging.log4j.core.pattern;
 
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.TimeZone;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.util.Constants;
 import org.apache.logging.log4j.core.time.Instant;
 import org.apache.logging.log4j.core.time.MutableInstant;
 import org.apache.logging.log4j.core.time.internal.format.FastDateFormat;
 import org.apache.logging.log4j.core.time.internal.format.FixedDateFormat;
 import org.apache.logging.log4j.core.time.internal.format.FixedDateFormat.FixedFormat;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.Plugin;
 import org.apache.logging.log4j.util.PerformanceSensitive;
+
+import static org.apache.logging.log4j.util.Constants.isThreadLocalsEnabled;
 
 /**
  * Converts and formats the event's date in a StringBuilder.
  */
-@Plugin(name = "DatePatternConverter", category = PatternConverter.CATEGORY)
+@Namespace(PatternConverter.CATEGORY)
+@Plugin("DatePatternConverter")
 @ConverterKeys({"d", "date"})
 @PerformanceSensitive("allocation")
 public final class DatePatternConverter extends LogEventPatternConverter implements ArrayPatternConverter {
@@ -88,7 +92,7 @@ public final class DatePatternConverter extends LogEventPatternConverter impleme
         private final FixedDateFormat fixedDateFormat;
 
         // below fields are only used in ThreadLocal caching mode
-        private final char[] cachedBuffer = new char[64]; // max length of formatted date-time in any format < 64
+        private final char[] cachedBuffer = new char[70]; // max length of formatted date-time in any format < 70
         private int length = 0;
 
         FixedFormatter(final FixedDateFormat fixedDateFormat) {
@@ -104,7 +108,7 @@ public final class DatePatternConverter extends LogEventPatternConverter impleme
         void formatToBuffer(final Instant instant, final StringBuilder destination) {
             final long epochSecond = instant.getEpochSecond();
             final int nanoOfSecond = instant.getNanoOfSecond();
-            if (previousTime != epochSecond || nanos != nanoOfSecond) {
+            if (!fixedDateFormat.isEquivalent(previousTime, nanos, epochSecond, nanoOfSecond)) {
                 length = fixedDateFormat.formatInstant(instant, cachedBuffer, 0);
                 previousTime = epochSecond;
                 nanos = nanoOfSecond;
@@ -145,9 +149,9 @@ public final class DatePatternConverter extends LogEventPatternConverter impleme
     }
 
     private final class CachedTime {
-        public long epochSecond;
-        public int nanoOfSecond;
-        public String formatted;
+        public final long epochSecond;
+        public final int nanoOfSecond;
+        public final String formatted;
 
         public CachedTime(final Instant instant) {
             this.epochSecond = instant.getEpochSecond();
@@ -184,7 +188,7 @@ public final class DatePatternConverter extends LogEventPatternConverter impleme
         cachedTime = new AtomicReference<>(fromEpochMillis(System.currentTimeMillis()));
     }
 
-    private CachedTime fromEpochMillis(long epochMillis) {
+    private CachedTime fromEpochMillis(final long epochMillis) {
         final MutableInstant temp = new MutableInstant();
         temp.initFromEpochMilli(epochMillis, 0);
         return new CachedTime(temp);
@@ -216,7 +220,7 @@ public final class DatePatternConverter extends LogEventPatternConverter impleme
         // if we get here, options is a non-null array with at least one element (first of which non-null)
         Objects.requireNonNull(options);
         if (options.length == 0) {
-            throw new IllegalArgumentException("options array must have at least one element");
+            throw new IllegalArgumentException("Options array must have at least one element");
         }
         Objects.requireNonNull(options[0]);
         final String patternOption = options[0];
@@ -236,8 +240,13 @@ public final class DatePatternConverter extends LogEventPatternConverter impleme
             tz = TimeZone.getTimeZone(options[1]);
         }
 
+        Locale locale = null;
+        if (options.length > 2 && options[2] != null) {
+            locale = Locale.forLanguageTag(options[2]);
+        }
+
         try {
-            final FastDateFormat tempFormat = FastDateFormat.getInstance(pattern, tz);
+            final FastDateFormat tempFormat = FastDateFormat.getInstance(pattern, tz, locale);
             return new PatternFormatter(tempFormat);
         } catch (final IllegalArgumentException e) {
             LOGGER.warn("Could not instantiate FastDateFormat with pattern " + pattern, e);
@@ -266,26 +275,25 @@ public final class DatePatternConverter extends LogEventPatternConverter impleme
     }
 
     public void format(final long epochMilli, final StringBuilder output) {
-        MutableInstant instant = getMutableInstant();
+        final MutableInstant instant = getMutableInstant();
         instant.initFromEpochMilli(epochMilli, 0);
         format(instant, output);
     }
 
     private MutableInstant getMutableInstant() {
-        if (Constants.ENABLE_THREADLOCALS) {
+        if (isThreadLocalsEnabled()) {
             MutableInstant result = threadLocalMutableInstant.get();
             if (result == null) {
                 result = new MutableInstant();
                 threadLocalMutableInstant.set(result);
             }
             return result;
-        } else {
-            return new MutableInstant();
         }
+        return new MutableInstant();
     }
 
     public void format(final Instant instant, final StringBuilder output) {
-        if (Constants.ENABLE_THREADLOCALS) {
+        if (isThreadLocalsEnabled()) {
             formatWithoutAllocation(instant, output);
         } else {
             formatWithoutThreadLocals(instant, output);

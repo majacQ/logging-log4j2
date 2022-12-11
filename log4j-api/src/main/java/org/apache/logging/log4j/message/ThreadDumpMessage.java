@@ -19,13 +19,12 @@ package org.apache.logging.log4j.message;
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.io.Serializable;
+import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
-import java.util.ServiceConfigurationError;
-import java.util.ServiceLoader;
 
-import org.apache.logging.log4j.status.StatusLogger;
+import org.apache.logging.log4j.util.Lazy;
+import org.apache.logging.log4j.util.ServiceRegistry;
 import org.apache.logging.log4j.util.StringBuilderFormattable;
 import org.apache.logging.log4j.util.Strings;
 
@@ -35,7 +34,11 @@ import org.apache.logging.log4j.util.Strings;
 @AsynchronouslyFormattable
 public class ThreadDumpMessage implements Message, StringBuilderFormattable {
     private static final long serialVersionUID = -1103400781608841088L;
-    private static ThreadInfoFactory FACTORY;
+    private static final Lazy<ThreadInfoFactory> FACTORY = Lazy.lazy(() -> {
+        final var services = ServiceRegistry.getInstance()
+                .getServices(ThreadInfoFactory.class, MethodHandles.lookup(), null);
+        return services.isEmpty() ? new BasicThreadInfoFactory() : services.get(0);
+    });
 
     private volatile Map<ThreadInformation, StackTraceElement[]> threads;
     private final String title;
@@ -47,35 +50,12 @@ public class ThreadDumpMessage implements Message, StringBuilderFormattable {
      */
     public ThreadDumpMessage(final String title) {
         this.title = title == null ? Strings.EMPTY : title;
-        threads = getFactory().createThreadInfo();
+        threads = FACTORY.get().createThreadInfo();
     }
 
     private ThreadDumpMessage(final String formattedMsg, final String title) {
         this.formattedMessage = formattedMsg;
         this.title = title == null ? Strings.EMPTY : title;
-    }
-
-    private static ThreadInfoFactory getFactory() {
-        if (FACTORY == null) {
-            FACTORY = initFactory(ThreadDumpMessage.class.getClassLoader());
-        }
-        return FACTORY;
-    }
-
-    private static ThreadInfoFactory initFactory(final ClassLoader classLoader) {
-        final ServiceLoader<ThreadInfoFactory> serviceLoader = ServiceLoader.load(ThreadInfoFactory.class, classLoader);
-        ThreadInfoFactory result = null;
-        try {
-            final Iterator<ThreadInfoFactory> iterator = serviceLoader.iterator();
-            while (result == null && iterator.hasNext()) {
-                result = iterator.next();
-            }
-        } catch (ServiceConfigurationError | LinkageError | Exception unavailable) { // if java management classes not available
-            StatusLogger.getLogger().info("ThreadDumpMessage uses BasicThreadInfoFactory: " +
-                            "could not load extended ThreadInfoFactory: {}", unavailable.toString());
-            result = null;
-        }
-        return result == null ? new BasicThreadInfoFactory() : result;
     }
 
     @Override
@@ -171,9 +151,8 @@ public class ThreadDumpMessage implements Message, StringBuilderFormattable {
      * <p>
      * Implementations of this class are loaded via the standard java Service Provider interface.
      * </p>
-     * @see /log4j-core/src/main/resources/META-INF/services/org.apache.logging.log4j.message.ThreadDumpMessage$ThreadInfoFactory
      */
-    public static interface ThreadInfoFactory {
+    public interface ThreadInfoFactory {
         Map<ThreadInformation, StackTraceElement[]> createThreadInfo();
     }
 

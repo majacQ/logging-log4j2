@@ -18,7 +18,6 @@ package org.apache.logging.log4j.core.async;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Map;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
@@ -29,17 +28,24 @@ import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.impl.MementoMessage;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
 import org.apache.logging.log4j.core.time.Clock;
-import org.apache.logging.log4j.core.time.NanoClock;
-import org.apache.logging.log4j.core.util.*;
 import org.apache.logging.log4j.core.time.Instant;
 import org.apache.logging.log4j.core.time.MutableInstant;
-import org.apache.logging.log4j.message.*;
+import org.apache.logging.log4j.core.time.NanoClock;
+import org.apache.logging.log4j.core.util.Constants;
+import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.message.ParameterConsumer;
+import org.apache.logging.log4j.message.ParameterVisitable;
+import org.apache.logging.log4j.message.ReusableMessage;
+import org.apache.logging.log4j.message.SimpleMessage;
+import org.apache.logging.log4j.message.TimestampMessage;
 import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.util.StringBuilders;
 import org.apache.logging.log4j.util.StringMap;
 import org.apache.logging.log4j.util.Strings;
 
 import com.lmax.disruptor.EventFactory;
+
+import static org.apache.logging.log4j.util.Constants.isThreadLocalsEnabled;
 
 /**
  * When the Disruptor is started, the RingBuffer is populated with event objects. These objects are then re-used during
@@ -60,18 +66,14 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
 
         @Override
         public RingBufferLogEvent newInstance() {
-            final RingBufferLogEvent result = new RingBufferLogEvent();
-            if (Constants.ENABLE_THREADLOCALS) {
-                result.messageText = new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE);
-                result.parameters = new Object[10];
-            }
-            return result;
+            return new RingBufferLogEvent();
         }
     }
 
+    private boolean populated;
     private int threadPriority;
     private long threadId;
-    private MutableInstant instant = new MutableInstant();
+    private final MutableInstant instant = new MutableInstant();
     private long nanoTime;
     private short parameterCount;
     private boolean includeLocation;
@@ -114,6 +116,7 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
         this.contextData = mutableContextData;
         this.contextStack = aContextStack;
         this.asyncLogger = anAsyncLogger;
+        this.populated = true;
     }
 
     private void initTime(final Clock clock) {
@@ -134,10 +137,8 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
             final ReusableMessage reusable = (ReusableMessage) msg;
             reusable.formatTo(getMessageTextForWriting());
             messageFormat = reusable.getFormat();
-            if (parameters != null) {
-                parameters = reusable.swapParameters(parameters);
-                parameterCount = reusable.getParameterCount();
-            }
+            parameters = reusable.swapParameters(parameters == null ? new Object[10] : parameters);
+            parameterCount = reusable.getParameterCount();
         } else {
             this.message = InternalAsyncUtil.makeMessageImmutable(msg);
         }
@@ -145,8 +146,8 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
 
     private StringBuilder getMessageTextForWriting() {
         if (messageText == null) {
-            // Should never happen:
-            // only happens if user logs a custom reused message when Constants.ENABLE_THREADLOCALS is false
+            // Happens the first time messageText is requested or if a user logs
+            // a custom reused message when Constants.ENABLE_THREADLOCALS is false
             messageText = new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE);
         }
         messageText.setLength(0);
@@ -161,6 +162,13 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
     public void execute(final boolean endOfBatch) {
         this.endOfBatch = endOfBatch;
         asyncLogger.actualAsyncLog(this);
+    }
+
+    /**
+     * @return {@code true} if this event is populated with data, {@code false} otherwise
+     */
+    public boolean isPopulated() {
+        return populated;
     }
 
     /**
@@ -283,7 +291,7 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
     }
 
     @Override
-    public <S> void forEachParameter(ParameterConsumer<S> action, S state) {
+    public <S> void forEachParameter(final ParameterConsumer<S> action, final S state) {
         if (parameters != null) {
             for (short i = 0; i < parameterCount; i++) {
                 action.accept(parameters[i], i, state);
@@ -348,12 +356,6 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
         this.contextData = contextData;
     }
 
-    @SuppressWarnings("unchecked")
-    @Override
-    public Map<String, String> getContextMap() {
-        return contextData.toMap();
-    }
-
     @Override
     public ContextStack getContextStack() {
         return contextStack;
@@ -398,6 +400,8 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
      * Release references held by ring buffer to allow objects to be garbage-collected.
      */
     public void clear() {
+        this.populated = false;
+
         this.asyncLogger = null;
         this.loggerName = null;
         this.marker = null;
@@ -418,12 +422,18 @@ public class RingBufferLogEvent implements LogEvent, ReusableMessage, CharSequen
         }
 
         // ensure that excessively long char[] arrays are not kept in memory forever
-        StringBuilders.trimToMaxSize(messageText, Constants.MAX_REUSABLE_MESSAGE_SIZE);
+        if (isThreadLocalsEnabled()) {
+            StringBuilders.trimToMaxSize(messageText, Constants.MAX_REUSABLE_MESSAGE_SIZE);
 
-        if (parameters != null) {
-            for (int i = 0; i < parameters.length; i++) {
-                parameters[i] = null;
+            if (parameters != null) {
+                Arrays.fill(parameters, null);
             }
+        } else {
+            // A user may have manually logged a ReusableMessage implementation, when thread locals are
+            // disabled we remove the reference in order to avoid permanently holding references to these
+            // buffers.
+            messageText = null;
+            parameters = null;
         }
     }
 

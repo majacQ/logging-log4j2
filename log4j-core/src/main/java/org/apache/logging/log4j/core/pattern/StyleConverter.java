@@ -21,9 +21,10 @@ import java.util.List;
 
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.core.util.Patterns;
+import org.apache.logging.log4j.plugins.Namespace;
+import org.apache.logging.log4j.plugins.Plugin;
 import org.apache.logging.log4j.util.PerformanceSensitive;
 
 /**
@@ -34,7 +35,8 @@ import org.apache.logging.log4j.util.PerformanceSensitive;
  * disable ANSI output if no console is detected, specify option <code>noConsoleNoAnsi=true</code>.
  * </p>
  */
-@Plugin(name = "style", category = PatternConverter.CATEGORY)
+@Namespace(PatternConverter.CATEGORY)
+@Plugin("style")
 @ConverterKeys({ "style" })
 @PerformanceSensitive("allocation")
 public final class StyleConverter extends LogEventPatternConverter implements AnsiConverter {

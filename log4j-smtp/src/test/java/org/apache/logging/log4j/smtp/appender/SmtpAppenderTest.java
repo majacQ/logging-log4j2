@@ -26,12 +26,11 @@ import org.apache.logging.dumbster.smtp.SimpleSmtpServer;
 import org.apache.logging.dumbster.smtp.SmtpMessage;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.ThreadContext;
-import org.apache.logging.log4j.categories.Appenders;
+import org.apache.logging.log4j.core.test.categories.Appenders;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.smtp.MimeMessageBuilder;
-import org.apache.logging.log4j.smtp.appender.SmtpAppender;
-import org.apache.logging.log4j.test.AvailablePortFinder;
+import org.apache.logging.log4j.core.test.AvailablePortFinder;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
@@ -41,8 +40,6 @@ import static org.junit.Assert.*;
 public class SmtpAppenderTest {
 
     private static final String HOST = "localhost";
-    private static final int PORTNUM = AvailablePortFinder.getNextAvailable();
-    private static final String PORT = String.valueOf(PORTNUM);
 
     @Test
     public void testMessageFactorySetFrom() throws MessagingException {
@@ -115,9 +112,19 @@ public class SmtpAppenderTest {
         final String subjectKey = getClass().getName();
         final String subjectValue = "SubjectValue1";
         ThreadContext.put(subjectKey, subjectValue);
-        final SmtpAppender appender = SmtpAppender.createAppender(null, "Test", "to@example.com", "cc@example.com",
-                "bcc@example.com", "from@example.com", "replyTo@example.com", "Subject Pattern %X{" + subjectKey + "}",
-                null, HOST, PORT, null, null, "false", "3", null, null, "true");
+        final int smtpPort = AvailablePortFinder.getNextAvailable();
+        final SmtpAppender appender = SmtpAppender.newBuilder()
+                .setName("Test")
+                .setTo("to@example.com")
+                .setCc("cc@example.com")
+                .setBcc("bcc@example.com")
+                .setFrom("from@example.com")
+                .setReplyTo("replyTo@example.com")
+                .setSubject("Subject Pattern %X{" + subjectKey + "} %maxLen{%m}{10}")
+                .setSmtpHost(HOST)
+                .setSmtpPort(smtpPort)
+                .setBufferSize(3)
+                .build();
         appender.start();
 
         final LoggerContext context = LoggerContext.getContext();
@@ -126,7 +133,7 @@ public class SmtpAppenderTest {
         root.setAdditive(false);
         root.setLevel(Level.DEBUG);
 
-        final SimpleSmtpServer server = SimpleSmtpServer.start(PORTNUM);
+        final SimpleSmtpServer server = SimpleSmtpServer.start(smtpPort);
 
         root.debug("Debug message #1");
         root.debug("Debug message #2");
@@ -146,8 +153,7 @@ public class SmtpAppenderTest {
         // can't be tested with Dumpster 1.6
         assertEquals("from@example.com", email.getHeaderValue("From"));
         assertEquals("replyTo@example.com", email.getHeaderValue("Reply-To"));
-        final String headerValue = email.getHeaderValue("Subject");
-        assertEquals(headerValue, "Subject Pattern " + subjectValue);
+        assertEquals("Subject Pattern " + subjectValue +" Error with", email.getHeaderValue("Subject"));
 
         final String body = email.getBody();
         assertFalse(body.contains("Debug message #1"));
@@ -160,6 +166,9 @@ public class SmtpAppenderTest {
         assertFalse(body.contains("Error message #2"));
 
         final SmtpMessage email2 = messages.next();
+
+        assertEquals("Subject Pattern " + subjectValue +" Error mess", email2.getHeaderValue("Subject"));
+
         final String body2 = email2.getBody();
         assertFalse(body2.contains("Debug message #4"));
         assertFalse(body2.contains("Error with exception"));

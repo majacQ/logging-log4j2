@@ -67,12 +67,6 @@ public final class NoSqlDatabaseManager<W> extends AbstractDatabaseManager {
         }
     }
 
-    @Deprecated
-    @Override
-    protected void writeInternal(final LogEvent event) {
-        writeInternal(event, null);
-    }
-    
     @Override
     protected void writeInternal(final LogEvent event, final Serializable serializable) {
         if (!this.isRunning() || this.connection == null || this.connection.isClosed()) {
@@ -92,12 +86,7 @@ public final class NoSqlDatabaseManager<W> extends AbstractDatabaseManager {
 
     private void setFields(final MapMessage<?, ?> mapMessage, final NoSqlObject<W> noSqlObject) {
         // Map without calling org.apache.logging.log4j.message.MapMessage#getData() which makes a copy of the map.
-        mapMessage.forEach(new BiConsumer<String, Object>() {
-            @Override
-            public void accept(final String key, final Object value) {
-                noSqlObject.set(key, value);
-            }
-        });
+        mapMessage.forEach((key, value) -> noSqlObject.set(key, value));
     }
 
     private void setFields(final LogEvent event, final NoSqlObject<W> entity) {
@@ -153,12 +142,7 @@ public final class NoSqlDatabaseManager<W> extends AbstractDatabaseManager {
             entity.set("contextMap", (Object) null);
         } else {
             final NoSqlObject<W> contextMapEntity = this.connection.createObject();
-            contextMap.forEach(new BiConsumer<String, String>() {
-                @Override
-                public void accept(final String key, final String val) {
-                    contextMapEntity.set(key, val);
-                }
-            });
+            contextMap.forEach((BiConsumer<String, String>) (key, val) -> contextMapEntity.set(key, val));
             entity.set("contextMap", contextMapEntity);
         }
 

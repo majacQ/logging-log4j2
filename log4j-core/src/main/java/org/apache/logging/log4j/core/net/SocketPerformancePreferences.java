@@ -16,13 +16,14 @@
  */
 package org.apache.logging.log4j.core.net;
 
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.util.Builder;
+import org.apache.logging.log4j.plugins.validation.constraints.Required;
+
 import java.net.Socket;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.Required;
-import org.apache.logging.log4j.core.util.Builder;
 
 /**
  * Holds all socket options settable via {@link Socket#setPerformancePreferences(int, int, int)}.
@@ -30,10 +31,11 @@ import org.apache.logging.log4j.core.util.Builder;
  * The {@link Socket#setPerformancePreferences(int, int, int)} API may not be implemented by a JRE.
  * </p>
  */
-@Plugin(name = "SocketPerformancePreferences", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin
 public class SocketPerformancePreferences implements Builder<SocketPerformancePreferences>, Cloneable {
 
-    @PluginBuilderFactory
+    @PluginFactory
     public static SocketPerformancePreferences newBuilder() {
         return new SocketPerformancePreferences();
     }

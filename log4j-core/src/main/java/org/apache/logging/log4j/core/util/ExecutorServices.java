@@ -32,7 +32,7 @@ public class ExecutorServices {
      * <p>
      * If the timeout is 0, then a plain shutdown takes place.
      * </p>
-     * 
+     *
      * @param executorService
      *            the pool to shutdown.
      * @param timeout
@@ -78,4 +78,6 @@ public class ExecutorServices {
         return true;
     }
 
+    /** no-op method which can be invoked to ensure this class has been initialized per jls-12.4.2. */
+    public static void ensureInitialized() {}
 }

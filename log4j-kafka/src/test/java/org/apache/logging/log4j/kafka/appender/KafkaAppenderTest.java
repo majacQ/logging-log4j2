@@ -14,7 +14,6 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.kafka.appender;
 
 import java.io.ByteArrayInputStream;
@@ -22,22 +21,24 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.producer.MockProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.categories.Appenders;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
-import org.apache.logging.log4j.junit.LoggerContextRule;
-import org.apache.logging.log4j.kafka.appender.KafkaManager;
-import org.apache.logging.log4j.kafka.appender.KafkaProducerFactory;
+import org.apache.logging.log4j.core.test.categories.Appenders;
+import org.apache.logging.log4j.core.test.junit.LoggerContextRule;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.apache.logging.log4j.util.FilteredObjectInputStream;
 import org.junit.Before;
@@ -46,17 +47,29 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 @Category(Appenders.Kafka.class)
 public class KafkaAppenderTest {
 
-    private static final MockProducer<byte[], byte[]> kafka = new MockProducer<byte[], byte[]>(true, null, null) {
+    private static final Serializer<byte[]> SERIALIZER = new ByteArraySerializer();
 
-        @Override
+    private static final MockProducer<byte[], byte[]> kafka = new MockProducer<byte[], byte[]>(true, SERIALIZER,
+            SERIALIZER) {
+
+        // @Override in version 1.1.1
         public void close(final long timeout, final TimeUnit timeUnit) {
+            // Intentionally do not close in order to reuse
         }
 
+        // @Override in version 3.3.1
+        public void close(final Duration timeout) {
+            // Intentionally do no close in order to reuse
+        }
     };
 
     private static final String LOG_MESSAGE = "Hello, world!";
@@ -103,20 +116,6 @@ public class KafkaAppenderTest {
     }
 
     @Test
-    public void testAppendWithSerializedLayout() throws Exception {
-        final Appender appender = ctx.getRequiredAppender("KafkaAppenderWithSerializedLayout");
-        final LogEvent logEvent = createLogEvent();
-        appender.append(logEvent);
-        final List<ProducerRecord<byte[], byte[]>> history = kafka.history();
-        assertEquals(1, history.size());
-        final ProducerRecord<byte[], byte[]> item = history.get(0);
-        assertNotNull(item);
-        assertEquals(TOPIC_NAME, item.topic());
-        assertNull(item.key());
-        assertEquals(LOG_MESSAGE, deserializeLogEvent(item.value()).getMessage().getFormattedMessage());
-    }
-
-    @Test
     public void testAsyncAppend() throws Exception {
         final Appender appender = ctx.getRequiredAppender("AsyncKafkaAppender");
         appender.append(createLogEvent());
@@ -140,6 +139,7 @@ public class KafkaAppenderTest {
         assertNotNull(item);
         assertEquals(TOPIC_NAME, item.topic());
         byte[] keyValue = "key".getBytes(StandardCharsets.UTF_8);
+        assertEquals(Long.valueOf(logEvent.getTimeMillis()), item.timestamp());
         assertArrayEquals(item.key(), keyValue);
         assertEquals(LOG_MESSAGE, new String(item.value(), StandardCharsets.UTF_8));
     }
@@ -157,10 +157,27 @@ public class KafkaAppenderTest {
         assertNotNull(item);
         assertEquals(TOPIC_NAME, item.topic());
         byte[] keyValue = format.format(date).getBytes(StandardCharsets.UTF_8);
+        assertEquals(Long.valueOf(logEvent.getTimeMillis()), item.timestamp());
         assertArrayEquals(item.key(), keyValue);
         assertEquals(LOG_MESSAGE, new String(item.value(), StandardCharsets.UTF_8));
     }
 
+
+    @Test
+    public void testAppenderNoEventTimestamp() throws Exception {
+        final Appender appender = ctx.getRequiredAppender("KafkaAppenderNoEventTimestamp");
+        final LogEvent logEvent = createLogEvent();
+        appender.append(logEvent);
+        final List<ProducerRecord<byte[], byte[]>> history = kafka.history();
+        assertEquals(1, history.size());
+        final ProducerRecord<byte[], byte[]> item = history.get(0);
+        assertNotNull(item);
+        assertEquals(TOPIC_NAME, item.topic());
+        byte[] keyValue = "key".getBytes(StandardCharsets.UTF_8);
+        assertArrayEquals(item.key(), keyValue);
+        assertNotEquals(Long.valueOf(logEvent.getTimeMillis()), item.timestamp());
+        assertEquals(LOG_MESSAGE, new String(item.value(), StandardCharsets.UTF_8));
+    }
 
     private LogEvent deserializeLogEvent(final byte[] data) throws IOException, ClassNotFoundException {
         final ByteArrayInputStream bis = new ByteArrayInputStream(data);

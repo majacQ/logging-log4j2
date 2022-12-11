@@ -14,7 +14,6 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.message;
 
 import java.util.Map;
@@ -83,7 +82,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
         this.type = type;
         this.maxLength = maxLength;
     }
-    
+
     /**
      * Creates a StructuredDataMessage using an ID (max 32 characters), message, type (max 32 characters), and an
      * initial map of structured data to include.
@@ -253,7 +252,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
     }
 
     @Override
-    public void formatTo(String[] formats, StringBuilder buffer) {
+    public void formatTo(final String[] formats, final StringBuilder buffer) {
         asString(getFormat(formats), null, buffer);
     }
 
@@ -355,7 +354,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
         }
     }
 
-    private void asXml(StructuredDataId structuredDataId, StringBuilder sb) {
+    private void asXml(final StructuredDataId structuredDataId, final StringBuilder sb) {
         sb.append("<StructuredData>\n");
         sb.append("<type>").append(type).append("</type>\n");
         sb.append("<id>").append(structuredDataId).append("</id>\n");
@@ -373,7 +372,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
     }
 
     /**
-     * Formats the message according the the specified format.
+     * Formats the message according to the specified format.
      * @param formats An array of Strings that provide extra information about how to format the message.
      * StructuredDataMessage accepts only a format of "FULL" which will cause the event type to be
      * prepended and the event message to be appended. Specifying any other value will cause only the
@@ -386,7 +385,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
         return asString(getFormat(formats), null);
     }
 
-    private Format getFormat(String[] formats) {
+    private Format getFormat(final String[] formats) {
         if (formats != null && formats.length > 0) {
             for (int i = 0; i < formats.length; i++) {
                 final String format = formats[i];
@@ -432,11 +431,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
         if (id != null ? !id.equals(that.id) : that.id != null) {
             return false;
         }
-        if (message != null ? !message.equals(that.message) : that.message != null) {
-            return false;
-        }
-
-        return true;
+        return message != null ? message.equals(that.message) : that.message == null;
     }
 
     @Override
@@ -468,7 +463,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
     protected void validate(final String key, final char value) {
         validateKey(key);
     }
-    
+
     /**
      * @since 2.9
      */
@@ -476,7 +471,7 @@ public class StructuredDataMessage extends MapMessage<StructuredDataMessage, Str
     protected void validate(final String key, final double value) {
         validateKey(key);
     }
-    
+
     /**
      * @since 2.9
      */

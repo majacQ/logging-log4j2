@@ -1,12 +1,12 @@
 ////
     Licensed to the Apache Software Foundation (ASF) under one or more
-    contributor license agreements. See the NOTICE file distributed with
+    contributor license agreements.  See the NOTICE file distributed with
     this work for additional information regarding copyright ownership.
     The ASF licenses this file to You under the Apache License, Version 2.0
     (the "License"); you may not use this file except in compliance with
-    the License. You may obtain a copy of the License at
+    the License.  You may obtain a copy of the License at
 
-        https://www.apache.org/licenses/LICENSE-2.0
+         http://www.apache.org/licenses/LICENSE-2.0
 
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
@@ -29,27 +29,27 @@ signature are links to the originals on the main distribution server.
 
 |Apache Log4j 2 binary (tar.gz)
 |https://www.apache.org/dyn/closer.lua/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.tar.gz[apache-log4j-{Log4jReleaseVersion}-bin.tar.gz]
-|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.tar.gz.md5[apache-log4j-{Log4jReleaseVersion}-bin.tar.gz.md5]
+|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.tar.gz.sha512[apache-log4j-{Log4jReleaseVersion}-bin.tar.gz.sha512]
 |https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.tar.gz.asc[apache-log4j-{Log4jReleaseVersion}-bin.tar.gz.asc]
 
 |Apache Log4j 2 binary (zip)
 |https://www.apache.org/dyn/closer.lua/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.zip[apache-log4j-{Log4jReleaseVersion}-bin.zip]
-|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.zip.md5[apache-log4j-{Log4jReleaseVersion}-bin.zip.md5]
+|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.zip.sha512[apache-log4j-{Log4jReleaseVersion}-bin.zip.sha512]
 |https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-bin.zip.asc[apache-log4j-{Log4jReleaseVersion}-bin.zip.asc]
 
 |Apache Log4j 2 source (tar.gz)
 |https://www.apache.org/dyn/closer.lua/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.tar.gz[apache-log4j-{Log4jReleaseVersion}-src.tar.gz]
-|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.tar.gz.md5[apache-log4j-{Log4jReleaseVersion}-src.tar.gz.md5]
+|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.tar.gz.sha512[apache-log4j-{Log4jReleaseVersion}-src.tar.gz.sha512]
 |https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.tar.gz.asc[apache-log4j-{Log4jReleaseVersion}-src.tar.gz.asc]
 
 |Apache Log4j 2 source (zip)
 |https://www.apache.org/dyn/closer.lua/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.zip[apache-log4j-{Log4jReleaseVersion}-src.zip]
-|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.zip.md5[apache-log4j-{Log4jReleaseVersion}-src.zip.md5]
+|https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.zip.sha512[apache-log4j-{Log4jReleaseVersion}-src.zip.sha512]
 |https://www.apache.org/dist/logging/log4j/{Log4jReleaseVersion}/apache-log4j-{Log4jReleaseVersion}-src.zip.asc[apache-log4j-{Log4jReleaseVersion}-src.zip.asc]
 |===
 
 It is essential that you verify the integrity of the downloaded files
-using the PGP or MD5 signatures. Please read
+using the PGP or SHA512 signatures. Please read
 https://httpd.apache.org/dev/verification.html[Verifying Apache HTTP
 Server Releases] for more information on why you should verify our
 releases.
@@ -71,40 +71,17 @@ gpg --verify apache-log4j-{Log4jReleaseVersion}-src.zip.asc apache-log4j-{Log4jR
 
 Apache Log4j {Log4jReleaseVersion} is signed by {Log4jReleaseManager} ({Log4jReleaseKey}).
 
-Alternatively, you can verify the MD5 signature on the files. A unix
-program called md5 or md5sum is included in many unix distributions.
+Alternatively, you can verify the SHA512 signature on the files. A unix
+program called sha512sum is included in many unix distributions.
 
 == Previous Releases
 
-Log4j 2.3 was the last 2.x release to support Java 6. Those artifacts
-can be found at:
-
-|===
-|Distribution |Mirrors |Checksum |Signature
-
-|Apache Log4j 2 binary (tar.gz)
-|https://www.apache.org/dyn/closer.lua/logging/log4j/2.3/apache-log4j-2.3-bin.tar.gz[apache-log4j-2.3-bin.tar.gz]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-bin.tar.gz.md5[apache-log4j-2.3-bin.tar.gz.md5]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-bin.tar.gz.asc[apache-log4j-2.3-bin.tar.gz.asc]
-
-|Apache Log4j 2 binary (zip)
-|https://www.apache.org/dyn/closer.lua/logging/log4j/2.3/apache-log4j-2.3-bin.zip[apache-log4j-2.3-bin.zip]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-bin.zip.md5[apache-log4j-2.3-bin.zip.md5]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-bin.zip.asc[apache-log4j-2.3-bin.zip.asc]
-
-|Apache Log4j 2 source (tar.gz)
-|https://www.apache.org/dyn/closer.lua/logging/log4j/2.3/apache-log4j-2.3-src.tar.gz[apache-log4j-2.3-src.tar.gz]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-src.tar.gz.md5[apache-log4j-2.3-src.tar.gz.md5]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-src.tar.gz.asc[apache-log4j-2.3-src.tar.gz.asc]
-
-|Apache Log4j 2 source (zip)
-|https://www.apache.org/dyn/closer.lua/logging/log4j/2.3/apache-log4j-2.3-src.zip[apache-log4j-2.3-src.zip]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-src.zip.md5[apache-log4j-2.3-src.zip.md5]
-|https://www.apache.org/dist/logging/log4j/2.3/apache-log4j-2.3-src.zip.asc[apache-log4j-2.3-src.zip.asc]
-|=======================================================================
+Log4j 2.12.1 was the last 2.x release to support Java 7 while Log4j 2.3 was the last 2.x release to support
+Java 6. The Log4j team no longer provides support for Java 6 or 7.
 
 All previous releases of Apache log4j can be found in the
-https://archive.apache.org/dist/logging/log4j/[archive repository].
+https://archive.apache.org/dist/logging/log4j/[ASF archive repository]. Of course, all releases are availble for
+use as dependencies from the https://search.maven.org/search?q=org.apache.logging.log4j[Maven Central Repository]
 
 == Using Log4j on your classpath
 

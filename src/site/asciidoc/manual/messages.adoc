@@ -1,12 +1,12 @@
 ////
     Licensed to the Apache Software Foundation (ASF) under one or more
-    contributor license agreements. See the NOTICE file distributed with
+    contributor license agreements.  See the NOTICE file distributed with
     this work for additional information regarding copyright ownership.
     The ASF licenses this file to You under the Apache License, Version 2.0
     (the "License"); you may not use this file except in compliance with
-    the License. You may obtain a copy of the License at
+    the License.  You may obtain a copy of the License at
 
-        https://www.apache.org/licenses/LICENSE-2.0
+         http://www.apache.org/licenses/LICENSE-2.0
 
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
@@ -228,8 +228,8 @@ with a `MessageLayout`, it converts a Log4j `MapMessage` to a JMS
 * When a link:appenders.html#JDBCAppender[JDBC Appender] is configured
 with a `MessageLayout`, it converts a Log4j `MapMessage` to values in a
 SQL INSERT statement.
-* When a link:appenders.html#NoSQLAppenderMongoDB2[MongoDB2 Appender] or
-link:appenders.html#NoSQLAppenderMongoDB3[MongoDB3 Appender] is
+* When a link:appenders.html#NoSQLAppenderMongoDB3[MongoDB3 Appender] or
+link:appenders.html#NoSQLAppenderMongoDB4[MongoDB4 Appender] is
 configured with a `MessageLayout`, it converts a Log4j `MapMessage` to
 fields in a MongoDB object.
 

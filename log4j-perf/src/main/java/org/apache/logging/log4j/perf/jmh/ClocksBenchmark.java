@@ -152,19 +152,16 @@ public class ClocksBenchmark {
         private static volatile OldCachedClock instance;
         private static final Object INSTANCE_LOCK = new Object();
         private volatile long millis = System.currentTimeMillis();
-        private volatile short count = 0;
+        private volatile short count;
 
         private OldCachedClock() {
-            final Thread updater = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    while (true) {
-                        final long time = System.currentTimeMillis();
-                        millis = time;
+            final Thread updater = new Thread(() -> {
+                while (true) {
+                    final long time = System.currentTimeMillis();
+                    millis = time;
 
-                        // avoid explicit dependency on sun.misc.Util
-                        LockSupport.parkNanos(1000 * 1000);
-                    }
+                    // avoid explicit dependency on sun.misc.Util
+                    LockSupport.parkNanos(1000 * 1000);
                 }
             }, "Clock Updater Thread");
             updater.setDaemon(true);

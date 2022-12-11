@@ -16,21 +16,22 @@
  */
 package org.apache.logging.log4j.core.async;
 
-import java.util.concurrent.BlockingQueue;
-
 import com.conversantmedia.util.concurrent.DisruptorBlockingQueue;
 import com.conversantmedia.util.concurrent.SpinPolicy;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
+import java.util.concurrent.BlockingQueue;
 
 /**
  * Factory for creating instances of {@link DisruptorBlockingQueue}.
  *
  * @since 2.7
  */
-@Plugin(name = "DisruptorBlockingQueue", category = Node.CATEGORY, elementType = BlockingQueueFactory.ELEMENT_TYPE)
+@Configurable(elementType = BlockingQueueFactory.ELEMENT_TYPE, printObject = true)
+@Plugin("DisruptorBlockingQueue")
 public class DisruptorBlockingQueueFactory<E> implements BlockingQueueFactory<E> {
 
     private final SpinPolicy spinPolicy;
@@ -46,7 +47,7 @@ public class DisruptorBlockingQueueFactory<E> implements BlockingQueueFactory<E>
 
     @PluginFactory
     public static <E> DisruptorBlockingQueueFactory<E> createFactory(
-        @PluginAttribute(value = "SpinPolicy", defaultString = "WAITING") final SpinPolicy spinPolicy
+        @PluginAttribute(defaultString = "WAITING") final SpinPolicy spinPolicy
     ) {
         return new DisruptorBlockingQueueFactory<>(spinPolicy);
     }

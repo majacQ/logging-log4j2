@@ -18,8 +18,8 @@ package org.apache.logging.log4j.io;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.Logger;
-import org.apache.logging.log4j.junit.LoggerContextRule;
-import org.apache.logging.log4j.test.appender.ListAppender;
+import org.apache.logging.log4j.core.test.junit.LoggerContextRule;
+import org.apache.logging.log4j.core.test.appender.ListAppender;
 import org.junit.Before;
 import org.junit.ClassRule;
 
@@ -30,11 +30,11 @@ public class IoBuilderCallerInfoTesting {
     protected static Logger getExtendedLogger() {
         return ctx.getLogger("ClassAndMethodLogger");
     }
-    
+
     protected static Logger getLogger() {
         return getExtendedLogger();
     }
-    
+
     protected final static Level LEVEL = Level.WARN;
 
     @ClassRule

@@ -19,7 +19,7 @@ package org.apache.logging.log4j.core.net;
 
 /**
  * Enumerates the <a href="https://tools.ietf.org/html/rfc1349">RFC 1349</a> TOS field.
- * 
+ *
  * <ul>
  * <li><code>IPTOS_LOWCOST (0x02)</code></li>
  * <li><code>IPTOS_RELIABILITY (0x04)</code></li>
@@ -39,7 +39,7 @@ public enum Rfc1349TrafficClass {
 
     private final int trafficClass;
 
-    private Rfc1349TrafficClass(final int trafficClass) {
+    Rfc1349TrafficClass(final int trafficClass) {
         this.trafficClass = trafficClass;
     }
 

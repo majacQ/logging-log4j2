@@ -60,17 +60,10 @@ public class OutputStreamManager extends AbstractManager implements ByteBufferDe
         super(null, streamName);
         this.outputStream = os;
         this.layout = layout;
-        if (writeHeader && layout != null) {
-            final byte[] header = layout.getHeader();
-            if (header != null) {
-                try {
-                    getOutputStream().write(header, 0, header.length);
-                } catch (final IOException e) {
-                    logError("Unable to write header", e);
-                }
-            }
-        }
         this.byteBuffer = Objects.requireNonNull(byteBuffer, "byteBuffer");
+        if (writeHeader) {
+            writeHeader(os);
+        }
     }
 
     /**
@@ -88,15 +81,8 @@ public class OutputStreamManager extends AbstractManager implements ByteBufferDe
         this.layout = layout;
         this.byteBuffer = Objects.requireNonNull(byteBuffer, "byteBuffer");
         this.outputStream = os;
-        if (writeHeader && layout != null) {
-            final byte[] header = layout.getHeader();
-            if (header != null) {
-                try {
-                    getOutputStream().write(header, 0, header.length);
-                } catch (final IOException e) {
-                    logError("Unable to write header for " + streamName, e);
-                }
-            }
+        if (writeHeader) {
+            writeHeader(os);
         }
     }
 
@@ -136,6 +122,19 @@ public class OutputStreamManager extends AbstractManager implements ByteBufferDe
         return closeOutputStream();
     }
 
+    protected void writeHeader(final OutputStream os) {
+        if (layout != null && os != null) {
+            final byte[] header = layout.getHeader();
+            if (header != null) {
+                try {
+                    os.write(header, 0, header.length);
+                } catch (final IOException e) {
+                    logError("Unable to write header", e);
+                }
+            }
+        }
+    }
+
     /**
      * Writes the footer.
      */
@@ -169,17 +168,7 @@ public class OutputStreamManager extends AbstractManager implements ByteBufferDe
     }
 
     protected void setOutputStream(final OutputStream os) {
-        final byte[] header = layout.getHeader();
-        if (header != null) {
-            try {
-                os.write(header, 0, header.length);
-                this.outputStream = os; // only update field if os.write() succeeded
-            } catch (final IOException ioe) {
-                logError("Unable to write header", ioe);
-            }
-        } else {
-            this.outputStream = os;
-        }
+        this.outputStream = os;
     }
 
     /**
@@ -289,10 +278,13 @@ public class OutputStreamManager extends AbstractManager implements ByteBufferDe
      */
     protected synchronized void flushBuffer(final ByteBuffer buf) {
         ((Buffer) buf).flip();
-        if (buf.remaining() > 0) {
-            writeToDestination(buf.array(), buf.arrayOffset() + buf.position(), buf.remaining());
+        try {
+            if (buf.remaining() > 0) {
+                writeToDestination(buf.array(), buf.arrayOffset() + buf.position(), buf.remaining());
+            }
+        } finally {
+            buf.clear();
         }
-        buf.clear();
     }
 
     /**
@@ -311,6 +303,7 @@ public class OutputStreamManager extends AbstractManager implements ByteBufferDe
         }
         try {
             stream.close();
+            LOGGER.debug("OutputStream closed");
         } catch (final IOException ex) {
             logError("Unable to close stream", ex);
             return false;
@@ -341,7 +334,7 @@ public class OutputStreamManager extends AbstractManager implements ByteBufferDe
      * {@link #flushBuffer(ByteBuffer)} directly instead.
      * </p>
      *
-     * @param buf the buffer whose contents to write the the destination
+     * @param buf the buffer whose contents to write the destination
      * @return the specified buffer
      * @since 2.6
      */

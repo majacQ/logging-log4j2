@@ -1,13 +1,13 @@
 ////
     Licensed to the Apache Software Foundation (ASF) under one or more
-    contributor license agreements. See the NOTICE file distributed with
+    contributor license agreements.  See the NOTICE file distributed with
     this work for additional information regarding copyright ownership.
     The ASF licenses this file to You under the Apache License, Version 2.0
     (the "License"); you may not use this file except in compliance with
-    the License. You may obtain a copy of the License at
-    
-        https://www.apache.org/licenses/LICENSE-2.0
-    
+    the License.  You may obtain a copy of the License at
+
+         http://www.apache.org/licenses/LICENSE-2.0
+
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -83,11 +83,11 @@ likely will not use directly in code but instead will only configure or include 
 |link:log4j-liquibase/apidocs/index.html[Log4j Liquibase Binding]
 |The Apache Log4j Liquibase binding to Log4j 2 Core.
 
-|link:log4j-mongodb2/apidocs/index.html[Log4j MongoDB 2 Support]
-|Additional Appender for MongoDB using the version 2 driver.
-
 |link:log4j-mongodb3/apidocs/index.html[Log4j MongoDB 3 Support]
 |Additional Appender for MongoDB using the version 3 driver.
+
+|link:log4j-mongodb4/apidocs/index.html[Log4j MongoDB 4 Support]
+|Additional Appender for MongoDB using the version 4 driver.
 
 |link:log4j-cassandra/apidocs/index.html[Log4j Cassandra Support]
 |Additional Appender for Cassandra.

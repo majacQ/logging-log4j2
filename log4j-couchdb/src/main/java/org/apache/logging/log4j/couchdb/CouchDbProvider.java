@@ -19,15 +19,17 @@ package org.apache.logging.log4j.couchdb;
 import java.lang.reflect.Method;
 
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.config.plugins.convert.TypeConverters;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.ValidHost;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.ValidPort;
-import org.apache.logging.log4j.core.util.NameUtil;
 import org.apache.logging.log4j.core.appender.nosql.NoSqlProvider;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+import org.apache.logging.log4j.plugins.convert.TypeConverter;
+import org.apache.logging.log4j.plugins.di.Injector;
+import org.apache.logging.log4j.plugins.validation.constraints.ValidHost;
+import org.apache.logging.log4j.plugins.validation.constraints.ValidPort;
 import org.apache.logging.log4j.status.StatusLogger;
+import org.apache.logging.log4j.util.Cast;
 import org.apache.logging.log4j.util.LoaderUtil;
 import org.apache.logging.log4j.util.Strings;
 import org.lightcouch.CouchDbClient;
@@ -36,7 +38,8 @@ import org.lightcouch.CouchDbProperties;
 /**
  * The Apache CouchDB implementation of {@link NoSqlProvider}.
  */
-@Plugin(name = "CouchDB", category = "Core", printObject = true)
+@Configurable(printObject = true)
+@Plugin("CouchDB")
 public final class CouchDbProvider implements NoSqlProvider<CouchDbConnection> {
     private static final int HTTP = 80;
     private static final int HTTPS = 443;
@@ -83,14 +86,15 @@ public final class CouchDbProvider implements NoSqlProvider<CouchDbConnection> {
      */
     @PluginFactory
     public static CouchDbProvider createNoSqlProvider(
-            @PluginAttribute("databaseName") final String databaseName,
-            @PluginAttribute("protocol") String protocol,
-            @PluginAttribute(value = "server", defaultString = "localhost") @ValidHost final String server,
-            @PluginAttribute(value = "port", defaultString = "0") @ValidPort final String port,
-            @PluginAttribute("username") final String username,
-            @PluginAttribute(value = "password", sensitive = true) final String password,
-            @PluginAttribute("factoryClassName") final String factoryClassName,
-            @PluginAttribute("factoryMethodName") final String factoryMethodName) {
+            @PluginAttribute final String databaseName,
+            @PluginAttribute String protocol,
+            @PluginAttribute(defaultString = "localhost") @ValidHost final String server,
+            @PluginAttribute(defaultString = "0") @ValidPort final String port,
+            @PluginAttribute final String username,
+            @PluginAttribute(sensitive = true) final String password,
+            @PluginAttribute final String factoryClassName,
+            @PluginAttribute final String factoryMethodName,
+            final Injector injector) {
         CouchDbClient client;
         String description;
         if (Strings.isNotEmpty(factoryClassName) && Strings.isNotEmpty(factoryMethodName)) {
@@ -106,7 +110,6 @@ public final class CouchDbProvider implements NoSqlProvider<CouchDbConnection> {
                     final CouchDbProperties properties = (CouchDbProperties) object;
                     client = new CouchDbClient(properties);
                     description = "uri=" + client.getDBUri() + ", username=" + properties.getUsername()
-                            + ", passwordHash=" + NameUtil.md5(password + CouchDbProvider.class.getName())
                             + ", maxConnections=" + properties.getMaxConnections() + ", connectionTimeout="
                             + properties.getConnectionTimeout() + ", socketTimeout=" + properties.getSocketTimeout();
                 } else if (object == null) {
@@ -141,7 +144,8 @@ public final class CouchDbProvider implements NoSqlProvider<CouchDbConnection> {
                 LOGGER.warn("No protocol specified, using default port [http].");
             }
 
-            final int portInt = TypeConverters.convert(port, int.class, protocol.equals("https") ? HTTPS : HTTP);
+            final TypeConverter<Integer> converter = Cast.cast(injector.getTypeConverter(Integer.class));
+            final int portInt = converter.convert(port, protocol.equals("https") ? HTTPS : HTTP);
 
             if (Strings.isEmpty(username) || Strings.isEmpty(password)) {
                 LOGGER.error("You must provide a username and password for the CouchDB provider.");
@@ -149,8 +153,7 @@ public final class CouchDbProvider implements NoSqlProvider<CouchDbConnection> {
             }
 
             client = new CouchDbClient(databaseName, false, protocol, server, portInt, username, password);
-            description = "uri=" + client.getDBUri() + ", username=" + username + ", passwordHash="
-                    + NameUtil.md5(password + CouchDbProvider.class.getName());
+            description = "uri=" + client.getDBUri() + ", username=" + username;
         } else {
             LOGGER.error("No factory method was provided so the database name is required.");
             return null;

@@ -16,38 +16,39 @@
  */
 package org.apache.logging.log4j.csv.layout;
 
-import java.io.IOException;
-import java.nio.charset.Charset;
-
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.QuoteMode;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.status.StatusLogger;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
 
 /**
  * A Comma-Separated Value (CSV) layout to log event parameters.
- * The event message is currently ignored. 
- * 
+ * The event message is currently ignored.
+ *
  * <p>
  * Best used with:
  * </p>
  * <p>
  * {@code logger.debug(new ObjectArrayMessage(1, 2, "Bob"));}
  * </p>
- * 
+ *
  * Depends on Apache Commons CSV 1.4.
- * 
+ *
  * @since 2.4
  */
-@Plugin(name = "CsvParameterLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Layout.ELEMENT_TYPE, printObject = true)
+@Plugin
 public class CsvParameterLayout extends AbstractCsvLayout {
 
     public static AbstractCsvLayout createDefaultLayout() {
@@ -62,16 +63,16 @@ public class CsvParameterLayout extends AbstractCsvLayout {
     public static AbstractCsvLayout createLayout(
             // @formatter:off
             @PluginConfiguration final Configuration config,
-            @PluginAttribute(value = "format", defaultString = DEFAULT_FORMAT) final String format,
-            @PluginAttribute("delimiter") final Character delimiter,
-            @PluginAttribute("escape") final Character escape,
-            @PluginAttribute("quote") final Character quote,
-            @PluginAttribute("quoteMode") final QuoteMode quoteMode,
-            @PluginAttribute("nullString") final String nullString,
-            @PluginAttribute("recordSeparator") final String recordSeparator,
-            @PluginAttribute(value = "charset", defaultString = DEFAULT_CHARSET) final Charset charset,
-            @PluginAttribute("header") final String header, 
-            @PluginAttribute("footer") final String footer)
+            @PluginAttribute(defaultString = DEFAULT_FORMAT) final String format,
+            @PluginAttribute final Character delimiter,
+            @PluginAttribute final Character escape,
+            @PluginAttribute final Character quote,
+            @PluginAttribute final QuoteMode quoteMode,
+            @PluginAttribute final String nullString,
+            @PluginAttribute final String recordSeparator,
+            @PluginAttribute(defaultString = DEFAULT_CHARSET) final Charset charset,
+            @PluginAttribute final String header,
+            @PluginAttribute final String footer)
             // @formatter:on
     {
 

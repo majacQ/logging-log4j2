@@ -1,12 +1,12 @@
 ////
     Licensed to the Apache Software Foundation (ASF) under one or more
-    contributor license agreements. See the NOTICE file distributed with
+    contributor license agreements.  See the NOTICE file distributed with
     this work for additional information regarding copyright ownership.
     The ASF licenses this file to You under the Apache License, Version 2.0
     (the "License"); you may not use this file except in compliance with
-    the License. You may obtain a copy of the License at
+    the License.  You may obtain a copy of the License at
 
-        https://www.apache.org/licenses/LICENSE-2.0
+         http://www.apache.org/licenses/LICENSE-2.0
 
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,7 +21,7 @@ Ralph Goers <rgoers@apache.org>; Gary Gregory <ggregory@apache.org>
 
 Log4j introduced the concept of the Mapped Diagnostic Context or MDC. It
 has been documented and discussed in numerous places including
-http://veerasundar.com/blog/2009/10/log4j-mdc-mapped-diagnostic-context-what-and-why/[Log4j
+https://veerasundar.com/blog/log4j-mdc-mapped-diagnostic-context-what-and-why/[Log4j
 MDC: What and Why] and
 http://blog.f12.no/wp/2004/12/09/log4j-and-the-mapped-diagnostic-context/[Log4j
 and the Mapped Diagnostic Context]. In addition, Log4j 1.x provides
@@ -188,8 +188,7 @@ The Stack and the Map are managed per thread and are based on
 http://docs.oracle.com/javase/6/docs/api/java/lang/ThreadLocal.html[`ThreadLocal`]
 by default. The Map can be configured to use an
 http://docs.oracle.com/javase/6/docs/api/java/lang/InheritableThreadLocal.html[`InheritableThreadLocal`]
-by setting system property `log4j2.isThreadContextMapInheritable` to
-`true`. When configured this way, the contents of the Map will be passed
+(see the Configuration section). When configured this way, the contents of the Map will be passed
 to child threads. However, as discussed in the
 http://docs.oracle.com/javase/6/docs/api/java/util/concurrent/Executors.html#privilegedThreadFactory()[`Executors`]
 class and in other cases where thread pooling is utilized, the
@@ -202,10 +201,17 @@ Note that all methods of the
 link:../log4j-api/apidocs/org/apache/logging/log4j/ThreadContext.html[`ThreadContext`]
 class are static.
 
+==== Configuration
+Set the system property `log4j2.disableThreadContextMap` to `true` to disable the Thread Context Map.
+Set the system property `log4j2.disableThreadContextStack` to `true` to disable the Thread Context Stack.
+Set the system property `log4j2.disableThreadContext` to `true` to disable both the Thread Context Map and Stack.
+Set the system property `log4j2.isThreadContextMapInheritable` to `true` to enable child threads to inherit the Thread
+Context Map.
+
 === Including the ThreadContext when writing logs
 
 The
-link:../log4j-api/apidocs/org/apache/logging/log4j/core/PatternLayout.html[`PatternLayout`]
+link:../log4j-core/apidocs/org/apache/logging/log4j/core/layout/PatternLayout.html[`PatternLayout`]
 provides mechanisms to print the contents of the
 link:../log4j-api/apidocs/org/apache/logging/log4j/ThreadContext.html[`ThreadContext`]
 Map and Stack.

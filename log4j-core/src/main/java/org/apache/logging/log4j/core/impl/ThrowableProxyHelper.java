@@ -16,26 +16,24 @@
  */
 package org.apache.logging.log4j.core.impl;
 
-import org.apache.logging.log4j.core.util.Loader;
-import org.apache.logging.log4j.status.StatusLogger;
-import org.apache.logging.log4j.util.LoaderUtil;
-
 import java.net.URL;
 import java.security.CodeSource;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Stack;
+
+import org.apache.logging.log4j.core.util.Loader;
+import org.apache.logging.log4j.status.StatusLogger;
+import org.apache.logging.log4j.util.LoaderUtil;
 
 /**
  * {@link ThrowableProxyHelper} provides utilities required to initialize a new {@link ThrowableProxy}
  * instance.
  */
 class ThrowableProxyHelper {
-
-    static final ThrowableProxy[] EMPTY_THROWABLE_PROXY_ARRAY = new ThrowableProxy[0];
 
     private ThrowableProxyHelper() {
         // Utility Class
@@ -69,10 +67,10 @@ class ThrowableProxyHelper {
      */
     static ExtendedStackTraceElement[] toExtendedStackTrace(
             final ThrowableProxy src,
-            final Stack<Class<?>> stack, final Map<String, CacheEntry> map,
+            final Deque<Class<?>> stack, final Map<String, CacheEntry> map,
             final StackTraceElement[] rootTrace,
             final StackTraceElement[] stackTrace) {
-        int stackLength;
+        final int stackLength;
         if (rootTrace != null) {
             int rootIndex = rootTrace.length - 1;
             int stackIndex = stackTrace.length - 1;
@@ -95,7 +93,7 @@ class ThrowableProxyHelper {
             // The stack returned from getCurrentStack may be missing entries for java.lang.reflect.Method.invoke()
             // and its implementation. The Throwable might also contain stack entries that are no longer
             // present as those methods have returned.
-            ExtendedClassInfo extClassInfo;
+            final ExtendedClassInfo extClassInfo;
             if (clazz != null && className.equals(clazz.getName())) {
                 final CacheEntry entry = toCacheEntry(clazz, true);
                 extClassInfo = entry.element;
@@ -128,7 +126,7 @@ class ThrowableProxyHelper {
         try {
             final Throwable[] suppressed = thrown.getSuppressed();
             if (suppressed == null || suppressed.length == 0) {
-                return EMPTY_THROWABLE_PROXY_ARRAY;
+                return ThrowableProxy.EMPTY_ARRAY;
             }
             final List<ThrowableProxy> proxies = new ArrayList<>(suppressed.length);
             if (suppressedVisited == null) {
@@ -140,7 +138,7 @@ class ThrowableProxyHelper {
                     proxies.add(new ThrowableProxy(candidate, suppressedVisited));
                 }
             }
-            return proxies.toArray(new ThrowableProxy[proxies.size()]);
+            return proxies.toArray(ThrowableProxy.EMPTY_ARRAY);
         } catch (final Exception e) {
             StatusLogger.getLogger().error(e);
         }

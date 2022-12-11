@@ -23,6 +23,7 @@ import java.nio.charset.Charset;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
+import org.apache.logging.log4j.io.internal.InternalOutputStream;
 import org.apache.logging.log4j.spi.ExtendedLogger;
 
 /**
@@ -30,24 +31,22 @@ import org.apache.logging.log4j.spi.ExtendedLogger;
  * that follows the {@link java.io.OutputStream} methods in spirit, but doesn't require output to any external stream.
  * This class should <em>not</em> be used as a stream for an underlying logger unless it's being used as a bridge.
  * Otherwise, infinite loops may occur!
- * 
+ *
  * @since 2.1
  */
 public class LoggerOutputStream extends OutputStream {
     private static final String FQCN = LoggerOutputStream.class.getName();
 
-    private final ByteStreamLogger logger;
-    private final String fqcn;
+    private final InternalOutputStream logger;
 
     protected LoggerOutputStream(final ExtendedLogger logger, final Level level, final Marker marker,
                                  final Charset charset, final String fqcn) {
-        this.logger = new ByteStreamLogger(logger, level, marker, charset);
-        this.fqcn = fqcn == null ? FQCN : fqcn;
+        this.logger = new InternalOutputStream(logger, level, marker, charset, fqcn == null ? FQCN : fqcn);
     }
 
     @Override
     public void close() throws IOException {
-        this.logger.close(this.fqcn);
+        this.logger.close();
     }
 
     @Override
@@ -57,16 +56,16 @@ public class LoggerOutputStream extends OutputStream {
 
     @Override
     public void write(final byte[] b) throws IOException {
-        this.logger.put(this.fqcn, b, 0, b.length);
+        logger.write(b);
     }
 
     @Override
     public void write(final byte[] b, final int off, final int len) throws IOException {
-        this.logger.put(this.fqcn, b, off, len);
+        logger.write(b, off, len);
     }
 
     @Override
     public void write(final int b) throws IOException {
-        this.logger.put(this.fqcn, (byte) (b & 0xFF));
+        logger.write(b);
     }
 }

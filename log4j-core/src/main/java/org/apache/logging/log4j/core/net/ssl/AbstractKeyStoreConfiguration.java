@@ -32,6 +32,8 @@ import org.apache.logging.log4j.core.util.NetUtils;
  * Configuration of the KeyStore
  */
 public class AbstractKeyStoreConfiguration extends StoreConfiguration<KeyStore> {
+    static final char[] DEFAULT_PASSWORD = "changeit".toCharArray();
+
     private final KeyStore keyStore;
     private final String keyStoreType;
 
@@ -40,24 +42,6 @@ public class AbstractKeyStoreConfiguration extends StoreConfiguration<KeyStore> 
         super(location, passwordProvider);
         this.keyStoreType = keyStoreType == null ? SslConfigurationDefaults.KEYSTORE_TYPE : keyStoreType;
         this.keyStore = this.load();
-    }
-
-    /**
-     * @deprecated Use {@link #AbstractKeyStoreConfiguration(String, PasswordProvider, String)} instead
-     */
-    @Deprecated
-    public AbstractKeyStoreConfiguration(final String location, final char[] password, final String keyStoreType)
-            throws StoreConfigurationException {
-        this(location, new MemoryPasswordProvider(password), keyStoreType);
-    }
-
-    /**
-     * @deprecated Use {@link #AbstractKeyStoreConfiguration(String, PasswordProvider, String)} instead
-     */
-    @Deprecated
-    public AbstractKeyStoreConfiguration(final String location, final String password, final String keyStoreType)
-            throws StoreConfigurationException {
-        this(location, new MemoryPasswordProvider(password == null ? null : password.toCharArray()), keyStoreType);
     }
 
     @Override
@@ -70,9 +54,9 @@ public class AbstractKeyStoreConfiguration extends StoreConfiguration<KeyStore> 
             }
             try (final InputStream fin = openInputStream(loadLocation)) {
                 final KeyStore ks = KeyStore.getInstance(this.keyStoreType);
-                char[] password = this.getPasswordAsCharArray();
+                final char[] password = this.getPassword();
                 try {
-                    ks.load(fin, password);
+                    ks.load(fin, password != null ? password : DEFAULT_PASSWORD);
                 } finally {
                     if (password != null) {
                         Arrays.fill(password, '\0');
@@ -94,7 +78,7 @@ public class AbstractKeyStoreConfiguration extends StoreConfiguration<KeyStore> 
             LOGGER.error("The keystore file {} is not found", loadLocation, e);
             throw new StoreConfigurationException(loadLocation, e);
         } catch (final IOException e) {
-            LOGGER.error("Something is wrong with the format of the keystore or the given password for location", loadLocation, e);
+            LOGGER.error("Something is wrong with the format of the keystore or the given password for location {}", loadLocation, e);
             throw new StoreConfigurationException(loadLocation, e);
         }
     }

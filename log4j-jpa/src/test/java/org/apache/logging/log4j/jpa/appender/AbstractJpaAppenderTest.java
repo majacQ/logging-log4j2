@@ -25,12 +25,11 @@ import java.sql.Statement;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.categories.Appenders;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.ConfigurationFactory;
 import org.apache.logging.log4j.core.config.DefaultConfiguration;
-import org.apache.logging.log4j.jpa.appender.JpaAppender;
+import org.apache.logging.log4j.core.test.categories.Appenders;
 import org.apache.logging.log4j.status.StatusLogger;
 import org.apache.logging.log4j.util.PropertiesUtil;
 import org.junit.Test;
@@ -56,7 +55,7 @@ public abstract class AbstractJpaAppenderTest {
         assertNotNull(getClass().getClassLoader().getResource(resource));
         System.setProperty(ConfigurationFactory.CONFIGURATION_FILE_PROPERTY,
                 resource);
-        PropertiesUtil.getProperties().reload();
+        ((PropertiesUtil) PropertiesUtil.getProperties()).reload();
         final LoggerContext context = LoggerContext.getContext(false);
         if (context.getConfiguration() instanceof DefaultConfiguration) {
             context.reconfigure();
@@ -74,7 +73,7 @@ public abstract class AbstractJpaAppenderTest {
             ((JpaAppender) appender).getManager().close();
         } finally {
             System.clearProperty(ConfigurationFactory.CONFIGURATION_FILE_PROPERTY);
-            PropertiesUtil.getProperties().reload();
+            ((PropertiesUtil) PropertiesUtil.getProperties()).reload();
             context.reconfigure();
             StatusLogger.getLogger().reset();
 

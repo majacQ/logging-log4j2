@@ -26,10 +26,11 @@ import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.core.config.Property;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.validation.constraints.Required;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.validation.constraints.Required;
 import org.apache.logging.log4j.core.filter.AbstractFilterable;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.core.util.Integers;
@@ -41,15 +42,15 @@ import org.apache.logging.log4j.core.util.Integers;
 public abstract class AbstractAppender extends AbstractFilterable implements Appender {
 
     /**
-     * Subclasses can extend this abstract Builder. 
-     * 
+     * Subclasses can extend this abstract Builder.
+     *
      * @param <B> The type to build.
      */
     public abstract static class Builder<B extends Builder<B>> extends AbstractFilterable.Builder<B> {
 
         @PluginBuilderAttribute
         private boolean ignoreExceptions = true;
-        
+
         @PluginElement("Layout")
         private Layout<? extends Serializable> layout;
 
@@ -72,17 +73,17 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
             return layout;
         }
 
-        public B withName(final String name) {
+        public B setName(final String name) {
             this.name = name;
             return asBuilder();
         }
 
-        public B withIgnoreExceptions(final boolean ignoreExceptions) {
+        public B setIgnoreExceptions(final boolean ignoreExceptions) {
             this.ignoreExceptions = ignoreExceptions;
             return asBuilder();
         }
 
-        public B withLayout(final Layout<? extends Serializable> layout) {
+        public B setLayout(final Layout<? extends Serializable> layout) {
             this.layout = layout;
             return asBuilder();
         }
@@ -93,21 +94,12 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
             }
             return layout;
         }
-        
+
         public Layout<? extends Serializable> getOrCreateLayout(final Charset charset) {
             if (layout == null) {
-                return PatternLayout.newBuilder().withCharset(charset).build();
+                return PatternLayout.newBuilder().setCharset(charset).build();
             }
             return layout;
-        }
-
-        /**
-         * @deprecated Use {@link #setConfiguration(Configuration)}
-         */
-        @Deprecated
-        public B withConfiguration(final Configuration configuration) {
-            this.configuration = configuration;
-            return asBuilder();
         }
 
         public B setConfiguration(final Configuration configuration) {
@@ -118,40 +110,59 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
         public Configuration getConfiguration() {
             return configuration;
         }
-        
+
     }
-    
+
     private final String name;
     private final boolean ignoreExceptions;
     private final Layout<? extends Serializable> layout;
     private ErrorHandler handler = new DefaultErrorHandler(this);
 
     /**
-     * Constructor that defaults to suppressing exceptions.
-     * 
-     * @param name The Appender name.
-     * @param filter The Filter to associate with the Appender.
-     * @param layout The layout to use to format the event.
-     */
-    protected AbstractAppender(final String name, final Filter filter, final Layout<? extends Serializable> layout) {
-        this(name, filter, layout, true);
-    }
-
-    /**
      * Constructor.
-     * 
+     *
      * @param name The Appender name.
      * @param filter The Filter to associate with the Appender.
      * @param layout The layout to use to format the event.
      * @param ignoreExceptions If true, exceptions will be logged and suppressed. If false errors will be logged and
      *            then passed to the application.
+     * @param properties Optional properties
      */
     protected AbstractAppender(final String name, final Filter filter, final Layout<? extends Serializable> layout,
-            final boolean ignoreExceptions) {
-        super(filter);
+            final boolean ignoreExceptions, final Property[] properties) {
+        super(filter, properties);
         this.name = Objects.requireNonNull(name, "name");
         this.layout = layout;
         this.ignoreExceptions = ignoreExceptions;
+    }
+
+    /**
+     * Constructor that defaults to suppressing exceptions.
+     *
+     * @param name The Appender name.
+     * @param filter The Filter to associate with the Appender.
+     * @param layout The layout to use to format the event.
+     * @deprecated Use {@link #AbstractAppender(String, Filter, Layout, boolean, Property[])}.
+     */
+    @Deprecated
+    protected AbstractAppender(final String name, final Filter filter, final Layout<? extends Serializable> layout) {
+        this(name, filter, layout, true, Property.EMPTY_ARRAY);
+    }
+
+    /**
+     * Constructor.
+     *
+     * @param name The Appender name.
+     * @param filter The Filter to associate with the Appender.
+     * @param layout The layout to use to format the event.
+     * @param ignoreExceptions If true, exceptions will be logged and suppressed. If false errors will be logged and
+     *            then passed to the application.
+     * @deprecated Use {@link #AbstractAppender(String, Filter, Layout, boolean, Property[])}
+     */
+    @Deprecated
+    protected AbstractAppender(final String name, final Filter filter, final Layout<? extends Serializable> layout,
+            final boolean ignoreExceptions) {
+        this(name, filter, layout, ignoreExceptions, Property.EMPTY_ARRAY);
     }
 
     public static int parseInt(final String s, final int defaultValue) {
@@ -163,9 +174,14 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
         }
     }
 
+    @Override
+    public boolean requiresLocation() {
+        return layout != null && layout.requiresLocation();
+    }
+
     /**
      * Handle an error with a message using the {@link ErrorHandler} configured for this Appender.
-     * 
+     *
      * @param msg The message.
      */
     public void error(final String msg) {
@@ -175,7 +191,7 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
     /**
      * Handle an error with a message, exception, and a logging event, using the {@link ErrorHandler} configured for
      * this Appender.
-     * 
+     *
      * @param msg The message.
      * @param event The LogEvent.
      * @param t The Throwable.
@@ -186,7 +202,7 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
 
     /**
      * Handle an error with a message and an exception using the {@link ErrorHandler} configured for this Appender.
-     * 
+     *
      * @param msg The message.
      * @param t The Throwable.
      */
@@ -196,7 +212,7 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
 
     /**
      * Returns the ErrorHandler, if any.
-     * 
+     *
      * @return The ErrorHandler.
      */
     @Override
@@ -206,7 +222,7 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
 
     /**
      * Returns the Layout for the appender.
-     * 
+     *
      * @return The Layout used to format the event.
      */
     @Override
@@ -216,7 +232,7 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
 
     /**
      * Returns the name of the Appender.
-     * 
+     *
      * @return The name of the Appender.
      */
     @Override
@@ -237,7 +253,7 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
 
     /**
      * The handler must be set before the appender is started.
-     * 
+     *
      * @param handler The ErrorHandler to use.
      */
     @Override
@@ -255,7 +271,7 @@ public abstract class AbstractAppender extends AbstractFilterable implements App
 
     /**
      * Serializes the given event using the appender's layout if present.
-     * 
+     *
      * @param event
      *            the event to serialize.
      * @return the serialized event or null if no layout is present.

@@ -16,22 +16,23 @@
  */
 package org.apache.logging.log4j.core.appender.rolling;
 
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
-
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.lookup.StrSubstitutor;
 import org.apache.logging.log4j.core.pattern.ArrayPatternConverter;
 import org.apache.logging.log4j.core.pattern.DatePatternConverter;
+import org.apache.logging.log4j.core.pattern.FileDatePatternConverter;
 import org.apache.logging.log4j.core.pattern.FormattingInfo;
 import org.apache.logging.log4j.core.pattern.PatternConverter;
 import org.apache.logging.log4j.core.pattern.PatternParser;
 import org.apache.logging.log4j.status.StatusLogger;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.List;
 
 /**
  * Parses the rollover pattern.
@@ -52,10 +53,13 @@ public class PatternProcessor {
 
     private final ArrayPatternConverter[] patternConverters;
     private final FormattingInfo[] patternFields;
+    private final FileExtension fileExtension;
 
     private long prevFileTime = 0;
     private long nextFileTime = 0;
     private long currentFileTime = 0;
+
+    private boolean isTimeBased = false;
 
     private RolloverFrequency frequency = null;
 
@@ -77,18 +81,22 @@ public class PatternProcessor {
     public PatternProcessor(final String pattern) {
         this.pattern = pattern;
         final PatternParser parser = createPatternParser();
+        // FIXME: this seems to expect List<ArrayPatternConverter> in practice; types need to be fixed around this
         final List<PatternConverter> converters = new ArrayList<>();
         final List<FormattingInfo> fields = new ArrayList<>();
         parser.parse(pattern, converters, fields, false, false, false);
-        final FormattingInfo[] infoArray = new FormattingInfo[fields.size()];
-        patternFields = fields.toArray(infoArray);
+        patternFields = fields.toArray(FormattingInfo.EMPTY_ARRAY);
         final ArrayPatternConverter[] converterArray = new ArrayPatternConverter[converters.size()];
         patternConverters = converters.toArray(converterArray);
+        this.fileExtension = FileExtension.lookupForFile(pattern);
 
         for (final ArrayPatternConverter converter : patternConverters) {
+            // TODO: extract common interface
             if (converter instanceof DatePatternConverter) {
                 final DatePatternConverter dateConverter = (DatePatternConverter) converter;
                 frequency = calculateFrequency(dateConverter.getPattern());
+            } else if (converter instanceof FileDatePatternConverter) {
+                frequency = calculateFrequency(((FileDatePatternConverter) converter).getPattern());
             }
         }
     }
@@ -104,6 +112,18 @@ public class PatternProcessor {
         this.prevFileTime = copy.prevFileTime;
         this.nextFileTime = copy.nextFileTime;
         this.currentFileTime = copy.currentFileTime;
+    }
+
+    public FormattingInfo[] getPatternFields() {
+        return patternFields;
+    }
+
+    public ArrayPatternConverter[] getPatternConverters() {
+        return patternConverters;
+    }
+
+    public void setTimeBased(final boolean isTimeBased) {
+        this.isTimeBased = isTimeBased;
     }
 
     public long getCurrentFileTime() {
@@ -123,6 +143,10 @@ public class PatternProcessor {
         this.prevFileTime = prevFileTime;
     }
 
+    public FileExtension getFileExtension() {
+        return fileExtension;
+    }
+
     /**
      * Returns the next potential rollover time.
      * @param currentMillis The current time.
@@ -136,10 +160,10 @@ public class PatternProcessor {
         // Call setMinimalDaysInFirstWeek(7);
         //
         prevFileTime = nextFileTime;
-        long nextTime;
+        final long nextTime;
 
         if (frequency == null) {
-            throw new IllegalStateException("Pattern does not contain a date");
+            throw new IllegalStateException("Pattern '" + pattern + "' does not contain a date");
         }
         final Calendar currentCal = Calendar.getInstance();
         currentCal.setTimeInMillis(currentMillis);
@@ -213,7 +237,10 @@ public class PatternProcessor {
     }
 
     public void updateTime() {
-        prevFileTime = nextFileTime;
+        if (nextFileTime != 0 || !isTimeBased) {
+			prevFileTime = nextFileTime;
+			currentFileTime = 0;
+		}
     }
 
     private long debugGetNextTime(final long nextTime) {
@@ -266,7 +293,9 @@ public class PatternProcessor {
                                      final Object obj) {
         // LOG4J2-628: we deliberately use System time, not the log4j.Clock time
         // for creating the file name of rolled-over files.
-        final long time = useCurrentTime && currentFileTime != 0 ? currentFileTime :
+		LOGGER.debug("Formatting file name. useCurrentTime={}, currentFileTime={}, prevFileTime={}, nextFileTime={}",
+			useCurrentTime, currentFileTime, prevFileTime, nextFileTime);
+		final long time = useCurrentTime ? currentFileTime != 0 ? currentFileTime : System.currentTimeMillis() :
                 prevFileTime != 0 ? prevFileTime : System.currentTimeMillis();
         formatFileName(buf, new Date(time), obj);
         final LogEvent event = new Log4jLogEvent.Builder().setTimeMillis(time).build();

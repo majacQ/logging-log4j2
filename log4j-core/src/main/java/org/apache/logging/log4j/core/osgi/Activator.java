@@ -14,101 +14,81 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.core.osgi;
 
 import java.util.Hashtable;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.core.config.plugins.util.PluginRegistry;
-import org.apache.logging.log4j.core.impl.Log4jProvider;
-import org.apache.logging.log4j.core.util.Constants;
-import org.apache.logging.log4j.spi.Provider;
-import org.apache.logging.log4j.status.StatusLogger;
+import org.apache.logging.log4j.core.impl.Log4jProperties;
+import org.apache.logging.log4j.core.util.ContextDataProvider;
+import org.apache.logging.log4j.plugins.di.Injector;
+import org.apache.logging.log4j.plugins.di.InjectorCallback;
+import org.apache.logging.log4j.plugins.di.Key;
+import org.apache.logging.log4j.plugins.model.PluginRegistry;
+import org.apache.logging.log4j.plugins.model.PluginService;
 import org.apache.logging.log4j.util.PropertiesUtil;
+import org.apache.logging.log4j.util.ServiceRegistry;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
-import org.osgi.framework.BundleEvent;
 import org.osgi.framework.ServiceRegistration;
-import org.osgi.framework.SynchronousBundleListener;
 import org.osgi.framework.wiring.BundleWiring;
 
 /**
  * OSGi BundleActivator.
  */
-public final class Activator implements BundleActivator, SynchronousBundleListener {
-
-    private static final Logger LOGGER = StatusLogger.getLogger();
-
+public final class Activator implements BundleActivator {
     private final AtomicReference<BundleContext> contextRef = new AtomicReference<>();
-
-    ServiceRegistration provideRegistration = null;
+    private ServiceRegistration<PluginRegistry> pluginRegistryServiceRegistration;
+    private PluginRegistry pluginRegistry;
+    private ServiceRegistration<InjectorCallback> injectorCallbackServiceRegistration;
+    private InjectorCallback injectorCallback;
 
     @Override
     public void start(final BundleContext context) throws Exception {
-        final Provider provider = new Log4jProvider();
-        final Hashtable<String, String> props = new Hashtable<>();
-        props.put("APIVersion", "2.60");
-        provideRegistration = context.registerService(Provider.class.getName(), provider, props);
-        // allow the user to override the default ContextSelector (e.g., by using BasicContextSelector for a global cfg)
-        if (PropertiesUtil.getProperties().getStringProperty(Constants.LOG4J_CONTEXT_SELECTOR) == null) {
-            System.setProperty(Constants.LOG4J_CONTEXT_SELECTOR, BundleContextSelector.class.getName());
-        }
-        if (this.contextRef.compareAndSet(null, context)) {
-            context.addBundleListener(this);
-            // done after the BundleListener as to not miss any new bundle installs in the interim
-            scanInstalledBundlesForPlugins(context);
-        }
-    }
+        pluginRegistryServiceRegistration = context.registerService(PluginRegistry.class, new PluginRegistry(), new Hashtable<>());
+        pluginRegistry = context.getService(pluginRegistryServiceRegistration.getReference());
+        injectorCallbackServiceRegistration = context.registerService(InjectorCallback.class, new InjectorCallback() {
+            @Override
+            public void configure(final Injector injector) {
+                injector.registerBinding(Key.forClass(PluginRegistry.class),
+                        () -> context.getService(pluginRegistryServiceRegistration.getReference()));
+            }
 
-    private static void scanInstalledBundlesForPlugins(final BundleContext context) {
-        final Bundle[] bundles = context.getBundles();
-        for (final Bundle bundle : bundles) {
-            // TODO: bundle state can change during this
-            scanBundleForPlugins(bundle);
-        }
-    }
-
-    private static void scanBundleForPlugins(final Bundle bundle) {
+            @Override
+            public int getOrder() {
+                return -50;
+            }
+        }, new Hashtable<>());
+        injectorCallback = context.getService(injectorCallbackServiceRegistration.getReference());
+        final ServiceRegistry registry = ServiceRegistry.getInstance();
+        final Bundle bundle = context.getBundle();
         final long bundleId = bundle.getBundleId();
-        // LOG4J2-920: don't scan system bundle for plugins
-        if (bundle.getState() == Bundle.ACTIVE && bundleId != 0) {
-            LOGGER.trace("Scanning bundle [{}, id=%d] for plugins.", bundle.getSymbolicName(), bundleId);
-            PluginRegistry.getInstance().loadFromBundle(bundleId,
-                    bundle.adapt(BundleWiring.class).getClassLoader());
+        final ClassLoader classLoader = bundle.adapt(BundleWiring.class).getClassLoader();
+        registry.registerBundleServices(InjectorCallback.class, bundleId, List.of(injectorCallback));
+        registry.loadServicesFromBundle(PluginService.class, bundleId, classLoader);
+        registry.loadServicesFromBundle(ContextDataProvider.class, bundleId, classLoader);
+        registry.loadServicesFromBundle(InjectorCallback.class, bundleId, classLoader);
+        // allow the user to override the default ContextSelector (e.g., by using BasicContextSelector for a global cfg)
+        if (PropertiesUtil.getProperties().getStringProperty(Log4jProperties.CONTEXT_SELECTOR_CLASS_NAME) == null) {
+            System.setProperty(Log4jProperties.CONTEXT_SELECTOR_CLASS_NAME, BundleContextSelector.class.getName());
         }
-    }
-
-    private static void stopBundlePlugins(final Bundle bundle) {
-        LOGGER.trace("Stopping bundle [{}] plugins.", bundle.getSymbolicName());
-        // TODO: plugin lifecycle code
-        PluginRegistry.getInstance().clearBundlePlugins(bundle.getBundleId());
+        contextRef.compareAndSet(null, context);
     }
 
     @Override
     public void stop(final BundleContext context) throws Exception {
-        provideRegistration.unregister();
-        this.contextRef.compareAndSet(context, null);
-        LogManager.shutdown();
-    }
-
-    @Override
-    public void bundleChanged(final BundleEvent event) {
-        switch (event.getType()) {
-            // FIXME: STARTING instead of STARTED?
-            case BundleEvent.STARTED:
-                scanBundleForPlugins(event.getBundle());
-                break;
-
-            case BundleEvent.STOPPING:
-                stopBundlePlugins(event.getBundle());
-                break;
-
-            default:
-                break;
+        if (injectorCallback != null) {
+            injectorCallback = null;
+            injectorCallbackServiceRegistration.unregister();
         }
+        if (pluginRegistry != null) {
+            pluginRegistry = null;
+            pluginRegistryServiceRegistration.unregister();
+        }
+        this.contextRef.compareAndSet(context, null);
+        LogManager.shutdown(false, true);
     }
 }

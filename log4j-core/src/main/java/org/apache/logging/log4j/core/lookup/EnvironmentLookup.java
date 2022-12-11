@@ -17,17 +17,18 @@
 package org.apache.logging.log4j.core.lookup;
 
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
+import org.apache.logging.log4j.plugins.Plugin;
 
 /**
  * Looks up keys from environment variables.
  */
-@Plugin(name = "env", category = StrLookup.CATEGORY)
+@Lookup
+@Plugin("env")
 public class EnvironmentLookup extends AbstractLookup {
 
     /**
      * Looks up the value of the given environment variable.
-     * 
+     *
      * @param event
      *            The current LogEvent (ignored by this StrLookup).
      * @param key

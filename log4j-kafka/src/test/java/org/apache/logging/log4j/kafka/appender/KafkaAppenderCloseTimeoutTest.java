@@ -14,19 +14,19 @@
  * See the license for the specific language governing permissions and
  * limitations under the license.
  */
-
 package org.apache.logging.log4j.kafka.appender;
 
+import java.time.Duration;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.producer.MockProducer;
 import org.apache.kafka.clients.producer.Producer;
-import org.apache.logging.log4j.categories.Appenders;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.logging.log4j.core.Appender;
-import org.apache.logging.log4j.junit.LoggerContextRule;
-import org.apache.logging.log4j.kafka.appender.KafkaManager;
-import org.apache.logging.log4j.kafka.appender.KafkaProducerFactory;
+import org.apache.logging.log4j.core.test.categories.Appenders;
+import org.apache.logging.log4j.core.test.junit.LoggerContextRule;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -36,20 +36,34 @@ import org.junit.experimental.categories.Category;
 @Category(Appenders.Kafka.class)
 public class KafkaAppenderCloseTimeoutTest {
 
-    private static final MockProducer<byte[], byte[]> kafka = new MockProducer<byte[], byte[]>(true, null, null) {
+    private static final Serializer<byte[]> SERIALIZER = new ByteArraySerializer();
+
+    private static final MockProducer<byte[], byte[]> kafka = new MockProducer<byte[], byte[]>(true, SERIALIZER,
+            SERIALIZER) {
         @Override
         public void close() {
             try {
                 Thread.sleep(3000);
             } catch (InterruptedException ignore) {
+                // NOP
             }
         }
 
-        @Override
+        // @Override in version 3.3.1
+        public void close(Duration timeout) {
+            try {
+                Thread.sleep(timeout.toMillis());
+            } catch (InterruptedException ignore) {
+                // NOP
+            }
+        }
+
+        // @Override in version 1.1.1
         public void close(long timeout, TimeUnit timeUnit) {
             try {
                 Thread.sleep(timeUnit.toMillis(timeout));
             } catch (InterruptedException ignore) {
+                // NOP
             }
         }
     };

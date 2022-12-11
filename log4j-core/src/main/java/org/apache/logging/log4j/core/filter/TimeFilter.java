@@ -16,89 +16,117 @@
  */
 package org.apache.logging.log4j.core.filter;
 
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.TimeZone;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.function.Supplier;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
-import org.apache.logging.log4j.core.config.Node;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
 import org.apache.logging.log4j.core.time.Clock;
 import org.apache.logging.log4j.core.time.ClockFactory;
 import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Inject;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
 import org.apache.logging.log4j.util.PerformanceSensitive;
 
 /**
  * Filters events that fall within a specified time period in each day.
  */
-@Plugin(name = "TimeFilter", category = Node.CATEGORY, elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Configurable(elementType = Filter.ELEMENT_TYPE, printObject = true)
+@Plugin
 @PerformanceSensitive("allocation")
 public final class TimeFilter extends AbstractFilter {
-    private static final Clock CLOCK = ClockFactory.getClock();
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     /**
      * Length of hour in milliseconds.
      */
     private static final long HOUR_MS = 3600000;
 
-    /**
-     * Length of minute in milliseconds.
-     */
-    private static final long MINUTE_MS = 60000;
-
-    /**
-     * Length of second in milliseconds.
-     */
-    private static final long SECOND_MS = 1000;
+    private static final long DAY_MS = HOUR_MS * 24;
 
     /**
      * Starting offset from midnight in milliseconds.
      */
-    private final long start;
+    private volatile long start;
+    private final LocalTime startTime;
+
     /**
      * Ending offset from midnight in milliseconds.
      */
-    private final long end;
+    private volatile long end;
+    private final LocalTime endTime;
+
+    private final long duration;
+
     /**
      * Timezone.
      */
-    private final TimeZone timezone;
+    private final ZoneId timeZone;
 
-    private long midnightToday;
-    private long midnightTomorrow;
+    private final Clock clock;
 
-
-    private TimeFilter(final long start, final long end, final TimeZone tz, final Result onMatch,
-                       final Result onMismatch) {
+    /*
+     * Expose for unit testing.
+     */
+    TimeFilter(
+            final LocalTime start, final LocalTime end, final ZoneId timeZone, final Result onMatch,
+            final Result onMismatch, final LocalDate now, final Clock clock) {
         super(onMatch, onMismatch);
-        this.start = start;
-        this.end = end;
-        timezone = tz;
-        initMidnight(start);
+        this.startTime = start;
+        this.endTime = end;
+        this.timeZone = timeZone;
+        this.start = ZonedDateTime.of(now, startTime, timeZone).withEarlierOffsetAtOverlap().toInstant().toEpochMilli();
+        long endMillis = ZonedDateTime.of(now, endTime, timeZone).withEarlierOffsetAtOverlap().toInstant().toEpochMilli();
+        if (end.isBefore(start)) {
+            // End time must be tomorrow.
+            endMillis += DAY_MS;
+        }
+        duration = startTime.isBefore(endTime) ? Duration.between(startTime, endTime).toMillis() :
+            Duration.between(startTime, endTime).plusHours(24).toMillis();
+        final long difference = (endMillis - this.start) - duration;
+        if (difference != 0) {
+            // Handle switch from standard time to daylight time and daylight time to standard time.
+            endMillis -= difference;
+        }
+        this.end = endMillis;
+        this.clock = clock;
     }
 
-    /**
-     * Initializes the midnight boundaries to midnight in the specified time zone.
-     * @param now a time in milliseconds since the epoch, used to pinpoint the current date
-     */
-    void initMidnight(final long now) {
-        final Calendar calendar = Calendar.getInstance(timezone);
-        calendar.setTimeInMillis(now);
-        calendar.set(Calendar.HOUR_OF_DAY, 0);
-        calendar.set(Calendar.MINUTE, 0);
-        calendar.set(Calendar.SECOND, 0);
-        calendar.set(Calendar.MILLISECOND, 0);
-        midnightToday = calendar.getTimeInMillis();
+    private TimeFilter(
+            final LocalTime start, final LocalTime end, final ZoneId timeZone, final Result onMatch,
+            final Result onMismatch, final Clock clock) {
+        this(start, end, timeZone, onMatch, onMismatch, LocalDate.now(timeZone), clock);
+    }
 
-        calendar.add(Calendar.DATE, 1);
-        midnightTomorrow = calendar.getTimeInMillis();
+    private synchronized void adjustTimes(final long currentTimeMillis) {
+        if (currentTimeMillis <= end) {
+            return;
+        }
+        final LocalDate date = Instant.ofEpochMilli(currentTimeMillis).atZone(timeZone).toLocalDate();
+        this.start = ZonedDateTime.of(date, startTime, timeZone).withEarlierOffsetAtOverlap().toInstant().toEpochMilli();
+        long endMillis = ZonedDateTime.of(date, endTime, timeZone).withEarlierOffsetAtOverlap().toInstant().toEpochMilli();
+        if (endTime.isBefore(startTime)) {
+            // End time must be tomorrow.
+            endMillis += DAY_MS;
+        }
+        final long difference = (endMillis - this.start) - duration;
+        if (difference != 0) {
+            // Handle switch from standard time to daylight time and daylight time to standard time.
+            endMillis -= difference;
+        }
+        this.end = endMillis;
     }
 
     /**
@@ -109,12 +137,10 @@ public final class TimeFilter extends AbstractFilter {
      * @return the action to perform
      */
     Result filter(final long currentTimeMillis) {
-        if (currentTimeMillis >= midnightTomorrow || currentTimeMillis < midnightToday) {
-            initMidnight(currentTimeMillis);
+        if (currentTimeMillis > end) {
+            adjustTimes(currentTimeMillis);
         }
-        return currentTimeMillis >= midnightToday + start && currentTimeMillis <= midnightToday + end //
-                ? onMatch // within window
-                : onMismatch;
+        return currentTimeMillis >= start && currentTimeMillis <= end ? onMatch : onMismatch;
     }
 
     @Override
@@ -123,7 +149,7 @@ public final class TimeFilter extends AbstractFilter {
     }
 
     private Result filter() {
-        return filter(CLOCK.currentTimeMillis());
+        return filter(clock.currentTimeMillis());
     }
 
     @Override
@@ -213,7 +239,7 @@ public final class TimeFilter extends AbstractFilter {
         final StringBuilder sb = new StringBuilder();
         sb.append("start=").append(start);
         sb.append(", end=").append(end);
-        sb.append(", timezone=").append(timezone.toString());
+        sb.append(", timezone=").append(timeZone.toString());
         return sb.toString();
     }
 
@@ -226,33 +252,78 @@ public final class TimeFilter extends AbstractFilter {
      * @param mismatch Action to perform if the action does not match.
      * @return A TimeFilter.
      */
-    // TODO Consider refactoring to use AbstractFilter.AbstractFilterBuilder
-    @PluginFactory
+    @Deprecated(since = "3.0.0", forRemoval = true)
     public static TimeFilter createFilter(
-            @PluginAttribute("start") final String start,
-            @PluginAttribute("end") final String end,
-            @PluginAttribute("timezone") final String tz,
-            @PluginAttribute("onMatch") final Result match,
-            @PluginAttribute("onMismatch") final Result mismatch) {
-        final long s = parseTimestamp(start, 0);
-        final long e = parseTimestamp(end, Long.MAX_VALUE);
-        final TimeZone timezone = tz == null ? TimeZone.getDefault() : TimeZone.getTimeZone(tz);
-        final Result onMatch = match == null ? Result.NEUTRAL : match;
-        final Result onMismatch = mismatch == null ? Result.DENY : mismatch;
-        return new TimeFilter(s, e, timezone, onMatch, onMismatch);
+            final String start, final String end, final String tz, final Result match, final Result mismatch) {
+        final Builder builder = newBuilder()
+                .setStart(start)
+                .setEnd(end);
+        if (tz != null) {
+            builder.setTimezone(ZoneId.of(tz));
+        }
+        if (match != null) {
+            builder.setOnMatch(match);
+        }
+        if (mismatch != null) {
+            builder.setOnMismatch(mismatch);
+        }
+        return builder.get();
     }
 
-    private static long parseTimestamp(final String timestamp, final long defaultValue) {
+    private static LocalTime parseTimestamp(final String timestamp, final LocalTime defaultValue) {
         if (timestamp == null) {
             return defaultValue;
         }
-        final SimpleDateFormat stf = new SimpleDateFormat("HH:mm:ss");
-        stf.setTimeZone(TimeZone.getTimeZone("UTC"));
+
         try {
-            return stf.parse(timestamp).getTime();
-        } catch (final ParseException e) {
+            return LocalTime.parse(timestamp, FORMATTER);
+        } catch (final Exception e) {
             LOGGER.warn("Error parsing TimeFilter timestamp value {}", timestamp, e);
             return defaultValue;
+        }
+    }
+
+    @PluginFactory
+    public static Builder newBuilder() {
+        return new Builder();
+    }
+
+    public static class Builder extends AbstractFilterBuilder<Builder> implements Supplier<TimeFilter> {
+        private String start;
+        private String end;
+        @PluginAttribute
+        private ZoneId timezone = ZoneId.systemDefault();
+        private Clock clock;
+
+        public Builder setStart(@PluginAttribute final String start) {
+            this.start = start;
+            return this;
+        }
+
+        public Builder setEnd(@PluginAttribute final String end) {
+            this.end = end;
+            return this;
+        }
+
+        public Builder setTimezone(final ZoneId timezone) {
+            this.timezone = timezone;
+            return this;
+        }
+
+        @Inject
+        public Builder setClock(final Clock clock) {
+            this.clock = clock;
+            return this;
+        }
+
+        @Override
+        public TimeFilter get() {
+            final LocalTime startTime = parseTimestamp(start, LocalTime.MIN);
+            final LocalTime endTime = parseTimestamp(end, LocalTime.MAX);
+            if (clock == null) {
+                clock = ClockFactory.getClock();
+            }
+            return new TimeFilter(startTime, endTime, timezone, getOnMatch(), getOnMismatch(), clock);
         }
     }
 

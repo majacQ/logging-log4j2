@@ -36,7 +36,7 @@ import org.apache.logging.log4j.status.StatusLogger;
  * This class implements {@link AutoCloseable} mostly to allow unit tests to be written safely and succinctly. While
  * managers do need to allocate resources (usually on construction) and then free these resources, a manager is longer
  * lived than other auto-closeable objects like streams. None the less, making a manager AutoCloseable forces readers to
- * be aware of the the pattern: allocate resources on construction and call {@link #close()} at some point.
+ * be aware of the pattern: allocate resources on construction and call {@link #close()} at some point.
  * </p>
  */
 public abstract class AbstractManager implements AutoCloseable {
@@ -126,6 +126,11 @@ public abstract class AbstractManager implements AutoCloseable {
         }
     }
 
+    /**
+     * Used by Log4j to update the Manager during reconfiguration. This method should be considered private.
+     * Implementations may not be thread safe. This method may be made protected in a future release.
+     * @param data The data to update.
+     */
     public void updateData(final Object data) {
         // This default implementation does nothing.
     }
@@ -164,6 +169,10 @@ public abstract class AbstractManager implements AutoCloseable {
                         manager.getName() + "'");
     }
 
+    protected static StatusLogger logger() {
+        return StatusLogger.getLogger();
+    }
+
     /**
      * May be overridden by managers to perform processing while the manager is being released and the
      * lock is held. A timeout is passed for implementors to use as they see fit.
@@ -189,15 +198,6 @@ public abstract class AbstractManager implements AutoCloseable {
      */
     public LoggerContext getLoggerContext() {
         return loggerContext;
-    }
-
-    /**
-     * Called to signify that this Manager is no longer required by an Appender.
-     * @deprecated In 2.7, use {@link #close()}.
-     */
-    @Deprecated
-    public void release() {
-        close();
     }
 
     /**

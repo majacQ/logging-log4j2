@@ -22,6 +22,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -30,13 +31,16 @@ import java.sql.Statement;
 
 import javax.sql.DataSource;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.test.junit.LoggerContextRule;
 import org.apache.logging.log4j.core.util.Throwables;
-import org.apache.logging.log4j.junit.JndiRule;
-import org.apache.logging.log4j.junit.LoggerContextRule;
+import org.apache.logging.log4j.jndi.test.junit.JndiRule;
 import org.apache.logging.log4j.message.MapMessage;
 import org.junit.Assert;
+import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.RuleChain;
@@ -52,11 +56,16 @@ public class JdbcAppenderMapMessageDataSourceTest {
     public final RuleChain rules;
     private final JdbcRule jdbcRule;
 
+    @BeforeClass
+    public static void beforeClass() {
+        System.setProperty("log4j2.enableJndiJdbc", "true");
+    }
+
     public JdbcAppenderMapMessageDataSourceTest() {
-        this(new JdbcRule(JdbcH2TestHelper.TEST_CONFIGURATION_SOURCE,
+        this(new JdbcRule(JdbcH2TestHelper.TEST_CONFIGURATION_SOURCE_MEM,
         // @formatter:off
-                "CREATE TABLE dsLogEntry (Id INTEGER IDENTITY, ColumnA VARCHAR(255), ColumnB VARCHAR(255))",
-                "DROP TABLE dsLogEntry"));
+                "CREATE TABLE dsLogEntry (Id INTEGER, ColumnA VARCHAR(255), ColumnB VARCHAR(255))",
+                "DROP TABLE IF EXISTS dsLogEntry"));
         // @formatter:on
     }
 
@@ -68,6 +77,16 @@ public class JdbcAppenderMapMessageDataSourceTest {
                 .around(new LoggerContextRule("org/apache/logging/log4j/jdbc/appender/log4j2-data-source-map-message.xml"));
         // @formatter:on
         this.jdbcRule = jdbcRule;
+    }
+
+    @Before
+    public void afterEachDeleteDir() throws IOException {
+        JdbcH2TestHelper.deleteDir();
+    }
+
+    @Before
+    public void beforeEachDeleteDir() throws IOException {
+        JdbcH2TestHelper.deleteDir();
     }
 
     private DataSource createMockDataSource() {
@@ -102,6 +121,30 @@ public class JdbcAppenderMapMessageDataSourceTest {
             mapMessage.with("ColumnB", "ValueB");
             logger.info(mapMessage);
 
+            try (final Statement statement = connection.createStatement();
+                    final ResultSet resultSet = statement
+                            .executeQuery("SELECT Id, ColumnA, ColumnB FROM dsLogEntry ORDER BY Id")) {
+
+                assertTrue("There should be at least one row.", resultSet.next());
+
+                Assert.assertEquals(1, resultSet.getInt("Id"));
+
+                assertFalse("There should not be two rows.", resultSet.next());
+            }
+        }
+    }
+
+    @Test
+    public void testTruncate() throws SQLException {
+        try (final Connection connection = jdbcRule.getConnectionSource().getConnection()) {
+            final Logger logger = LogManager.getLogger(this.getClass().getName() + ".testFactoryMethodConfig");
+            // Some drivers and database will not allow more data than the column defines.
+            // We really need a MySQL databases with a default configuration to test this.
+            final MapMessage mapMessage = new MapMessage();
+            mapMessage.with("Id", 1);
+            mapMessage.with("ColumnA", StringUtils.repeat('A', 1000));
+            mapMessage.with("ColumnB", StringUtils.repeat('B', 1000));
+            logger.info(mapMessage);
             try (final Statement statement = connection.createStatement();
                     final ResultSet resultSet = statement
                             .executeQuery("SELECT Id, ColumnA, ColumnB FROM dsLogEntry ORDER BY Id")) {

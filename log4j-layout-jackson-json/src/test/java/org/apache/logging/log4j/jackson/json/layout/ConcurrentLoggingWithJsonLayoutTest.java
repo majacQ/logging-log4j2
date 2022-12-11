@@ -16,9 +16,7 @@
  */
 package org.apache.logging.log4j.jackson.json.layout;
 
-import static org.hamcrest.CoreMatchers.endsWith;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.CoreMatchers.startsWith;
+import static org.hamcrest.CoreMatchers.*;
 import static org.junit.Assert.assertThat;
 
 import java.io.File;
@@ -31,7 +29,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.logging.log4j.Logger;
-import org.apache.logging.log4j.junit.LoggerContextRule;
+import org.apache.logging.log4j.core.test.junit.LoggerContextRule;
 import org.junit.AfterClass;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -108,7 +106,7 @@ public class ConcurrentLoggingWithJsonLayoutTest {
         final List<String> lines = Files.readAllLines(new File(PATH).toPath(), Charset.defaultCharset());
         for (final String line : lines) {
             assertThat(line, startsWith("{\"instant\":{\"epochSecond\":"));
-            assertThat(line, endsWith("\"threadPriority\":5}"));
+            assertThat(line, containsString("\"threadPriority\":5"));
         }
     }
 }

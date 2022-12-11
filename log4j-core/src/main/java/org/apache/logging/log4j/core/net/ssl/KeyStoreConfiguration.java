@@ -16,22 +16,22 @@
  */
 package org.apache.logging.log4j.core.net.ssl;
 
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
+import javax.net.ssl.KeyManagerFactory;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.util.Arrays;
 
-import javax.net.ssl.KeyManagerFactory;
-
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-
 /**
  * Configuration of the KeyStore
  */
-@Plugin(name = "KeyStore", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin("KeyStore")
 public class KeyStoreConfiguration extends AbstractKeyStoreConfiguration {
 
     private final String keyManagerFactoryAlgorithm;
@@ -94,12 +94,12 @@ public class KeyStoreConfiguration extends AbstractKeyStoreConfiguration {
     @PluginFactory
     public static KeyStoreConfiguration createKeyStoreConfiguration(
             // @formatter:off
-            @PluginAttribute("location") final String location,
-            @PluginAttribute(value = "password", sensitive = true) final char[] password,
-            @PluginAttribute("passwordEnvironmentVariable") final String passwordEnvironmentVariable,
-            @PluginAttribute("passwordFile") final String passwordFile,
+            @PluginAttribute final String location,
+            @PluginAttribute(sensitive = true) final char[] password,
+            @PluginAttribute final String passwordEnvironmentVariable,
+            @PluginAttribute final String passwordFile,
             @PluginAttribute("type") final String keyStoreType,
-            @PluginAttribute("keyManagerFactoryAlgorithm") final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
+            @PluginAttribute final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
             // @formatter:on
 
         if (password != null && passwordEnvironmentVariable != null && passwordFile != null) {
@@ -107,7 +107,7 @@ public class KeyStoreConfiguration extends AbstractKeyStoreConfiguration {
         }
         try {
             // @formatter:off
-            PasswordProvider provider = passwordFile != null
+            final PasswordProvider provider = passwordFile != null
                     ? new FilePasswordProvider(passwordFile)
                     : passwordEnvironmentVariable != null
                             ? new EnvironmentPasswordProvider(passwordEnvironmentVariable)
@@ -118,57 +118,17 @@ public class KeyStoreConfiguration extends AbstractKeyStoreConfiguration {
                 Arrays.fill(password, '\0');
             }
             return new KeyStoreConfiguration(location, provider, keyStoreType, keyManagerFactoryAlgorithm);
-        } catch (Exception ex) {
+        } catch (final Exception ex) {
             throw new StoreConfigurationException("Could not configure KeyStore", ex);
         }
-    }
-
-    /**
-     * @deprecated use {@link #createKeyStoreConfiguration(String, char[], String, String, String, String)}
-     */
-    @Deprecated
-    public static KeyStoreConfiguration createKeyStoreConfiguration(
-            // @formatter:off
-            final String location,
-            final char[] password,
-            final String keyStoreType,
-            final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
-            // @formatter:on
-        return createKeyStoreConfiguration(location, password, null, null, keyStoreType, keyManagerFactoryAlgorithm);
-    }
-
-    /**
-     * Creates a KeyStoreConfiguration.
-     *
-     * @param location The location of the KeyStore, a file path, URL or resource.
-     * @param password The password to access the KeyStore.
-     * @param keyStoreType The KeyStore type, null defaults to {@code "JKS"}.
-     * @param keyManagerFactoryAlgorithm The standard name of the requested algorithm. See the Java Secure Socket
-     * Extension Reference Guide for information about these names.
-     * @return a new KeyStoreConfiguration
-     * @throws StoreConfigurationException Thrown if this call cannot load the KeyStore.
-     * @deprecated Use createKeyStoreConfiguration(String, char[], String, String)
-     */
-    @Deprecated
-    public static KeyStoreConfiguration createKeyStoreConfiguration(
-            // @formatter:off
-            final String location,
-            final String password,
-            final String keyStoreType,
-            final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
-            // @formatter:on
-        return createKeyStoreConfiguration(location,
-                (password == null ? null : password.toCharArray()),
-                keyStoreType,
-                keyManagerFactoryAlgorithm);
     }
 
     public KeyManagerFactory initKeyManagerFactory() throws NoSuchAlgorithmException, UnrecoverableKeyException,
             KeyStoreException {
         final KeyManagerFactory kmFactory = KeyManagerFactory.getInstance(this.keyManagerFactoryAlgorithm);
-        char[] password = this.getPasswordAsCharArray();
+        final char[] password = this.getPassword();
         try {
-            kmFactory.init(this.getKeyStore(), password);
+            kmFactory.init(this.getKeyStore(), password != null ? password : DEFAULT_PASSWORD);
         } finally {
             if (password != null) {
                 Arrays.fill(password, '\0');

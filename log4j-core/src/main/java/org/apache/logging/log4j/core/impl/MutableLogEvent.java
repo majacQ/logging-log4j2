@@ -19,7 +19,6 @@ package org.apache.logging.log4j.core.impl;
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
 import java.util.Arrays;
-import java.util.Map;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
@@ -27,11 +26,16 @@ import org.apache.logging.log4j.ThreadContext;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.async.InternalAsyncUtil;
 import org.apache.logging.log4j.core.time.Clock;
-import org.apache.logging.log4j.core.time.NanoClock;
-import org.apache.logging.log4j.core.util.*;
 import org.apache.logging.log4j.core.time.Instant;
 import org.apache.logging.log4j.core.time.MutableInstant;
-import org.apache.logging.log4j.message.*;
+import org.apache.logging.log4j.core.time.NanoClock;
+import org.apache.logging.log4j.core.util.Constants;
+import org.apache.logging.log4j.message.Message;
+import org.apache.logging.log4j.message.ParameterConsumer;
+import org.apache.logging.log4j.message.ParameterVisitable;
+import org.apache.logging.log4j.message.ReusableMessage;
+import org.apache.logging.log4j.message.SimpleMessage;
+import org.apache.logging.log4j.message.TimestampMessage;
 import org.apache.logging.log4j.util.ReadOnlyStringMap;
 import org.apache.logging.log4j.util.StackLocatorUtil;
 import org.apache.logging.log4j.util.StringBuilders;
@@ -47,7 +51,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
 
     private int threadPriority;
     private long threadId;
-    private MutableInstant instant = new MutableInstant();
+    private final MutableInstant instant = new MutableInstant();
     private long nanoTime;
     private short parameterCount;
     private boolean includeLocation;
@@ -69,7 +73,8 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
     transient boolean reserved = false;
 
     public MutableLogEvent() {
-        this(new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE), new Object[10]);
+        // messageText and the parameter array are lazily initialized
+        this(null, null);
     }
 
     public MutableLogEvent(final StringBuilder msgText, final Object[] replacementParameters) {
@@ -148,9 +153,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
         StringBuilders.trimToMaxSize(messageText, Constants.MAX_REUSABLE_MESSAGE_SIZE);
 
         if (parameters != null) {
-            for (int i = 0; i < parameters.length; i++) {
-                parameters[i] = null;
-            }
+            Arrays.fill(parameters, null);
         }
 
         // primitive fields that cannot be cleared:
@@ -214,10 +217,8 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
             final ReusableMessage reusable = (ReusableMessage) msg;
             reusable.formatTo(getMessageTextForWriting());
             this.messageFormat = msg.getFormat();
-            if (parameters != null) {
-                parameters = reusable.swapParameters(parameters);
-                parameterCount = reusable.getParameterCount();
-            }
+            parameters = reusable.swapParameters(parameters == null ? new Object[10] : parameters);
+            parameterCount = reusable.getParameterCount();
         } else {
             this.message = InternalAsyncUtil.makeMessageImmutable(msg);
         }
@@ -225,8 +226,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
 
     private StringBuilder getMessageTextForWriting() {
         if (messageText == null) {
-            // Should never happen:
-            // only happens if user logs a custom reused message when Constants.ENABLE_THREADLOCALS is false
+            // Happens the first time messageText is requested
             messageText = new StringBuilder(Constants.INITIAL_REUSABLE_MESSAGE_SIZE);
         }
         messageText.setLength(0);
@@ -258,7 +258,7 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
     }
 
     @Override
-    public <S> void forEachParameter(ParameterConsumer<S> action, S state) {
+    public <S> void forEachParameter(final ParameterConsumer<S> action, final S state) {
         if (parameters != null) {
             for (short i = 0; i < parameterCount; i++) {
                 action.accept(parameters[i], i, state);
@@ -355,6 +355,10 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
         return thrownProxy;
     }
 
+    public void setSource(final StackTraceElement source) {
+        this.source = source;
+    }
+
     /**
      * Returns the StackTraceElement for the caller. This will be the entry that occurs right
      * before the first occurrence of FQCN as a class name.
@@ -376,11 +380,6 @@ public class MutableLogEvent implements LogEvent, ReusableMessage, ParameterVisi
     @Override
     public ReadOnlyStringMap getContextData() {
         return contextData;
-    }
-
-    @Override
-    public Map<String, String> getContextMap() {
-        return contextData.toMap();
     }
 
     public void setContextData(final StringMap mutableContextData) {

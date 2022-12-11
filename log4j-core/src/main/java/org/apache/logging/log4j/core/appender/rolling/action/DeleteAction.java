@@ -17,6 +17,16 @@
 
 package org.apache.logging.log4j.core.appender.rolling.action;
 
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
+import org.apache.logging.log4j.core.lookup.StrSubstitutor;
+import org.apache.logging.log4j.core.script.ScriptConditional;
+import org.apache.logging.log4j.plugins.Configurable;
+import org.apache.logging.log4j.plugins.Plugin;
+import org.apache.logging.log4j.plugins.PluginAttribute;
+import org.apache.logging.log4j.plugins.PluginElement;
+import org.apache.logging.log4j.plugins.PluginFactory;
+
 import java.io.IOException;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
@@ -24,28 +34,20 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
-import org.apache.logging.log4j.core.lookup.StrSubstitutor;
-
 /**
  * Rollover or scheduled action for deleting old log files that are accepted by the specified PathFilters.
  */
-@Plugin(name = "Delete", category = Core.CATEGORY_NAME, printObject = true)
+@Configurable(printObject = true)
+@Plugin("Delete")
 public class DeleteAction extends AbstractPathAction {
 
     private final PathSorter pathSorter;
     private final boolean testMode;
-    private final ScriptCondition scriptCondition;
+    private final ScriptConditional scriptCondition;
 
     /**
      * Creates a new DeleteAction that starts scanning for files to delete from the specified base path.
-     * 
+     *
      * @param basePath base path from where to start scanning for files to delete.
      * @param followSymbolicLinks whether to follow symbolic links. Default is false.
      * @param maxDepth The maxDepth parameter is the maximum number of levels of directories to visit. A value of 0
@@ -60,7 +62,7 @@ public class DeleteAction extends AbstractPathAction {
      * @param scriptCondition
      */
     DeleteAction(final String basePath, final boolean followSymbolicLinks, final int maxDepth, final boolean testMode,
-            final PathSorter sorter, final PathCondition[] pathConditions, final ScriptCondition scriptCondition,
+            final PathSorter sorter, final PathCondition[] pathConditions, final ScriptConditional scriptCondition,
             final StrSubstitutor subst) {
         super(basePath, followSymbolicLinks, maxDepth, pathConditions, subst);
         this.testMode = testMode;
@@ -74,7 +76,7 @@ public class DeleteAction extends AbstractPathAction {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.AbstractPathAction#execute()
      */
     @Override
@@ -95,8 +97,7 @@ public class DeleteAction extends AbstractPathAction {
     private List<PathWithAttributes> callScript() throws IOException {
         final List<PathWithAttributes> sortedPaths = getSortedPaths();
         trace("Sorted paths:", sortedPaths);
-        final List<PathWithAttributes> result = scriptCondition.selectFilesToDelete(getBasePath(), sortedPaths);
-        return result;
+        return scriptCondition.selectFilesToDelete(getBasePath(), sortedPaths);
     }
 
     private void deleteSelectedFiles(final List<PathWithAttributes> selectedForDeletion) throws IOException {
@@ -113,7 +114,7 @@ public class DeleteAction extends AbstractPathAction {
 
     /**
      * Deletes the specified file.
-     * 
+     *
      * @param path the file to delete
      * @throws IOException if a problem occurred deleting the file
      */
@@ -124,7 +125,7 @@ public class DeleteAction extends AbstractPathAction {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.apache.logging.log4j.core.appender.rolling.action.AbstractPathAction#execute(FileVisitor)
      */
     @Override
@@ -153,20 +154,19 @@ public class DeleteAction extends AbstractPathAction {
 
     /**
      * Returns a sorted list of all files up to maxDepth under the basePath.
-     * 
+     *
      * @return a sorted list of files
      * @throws IOException
      */
     List<PathWithAttributes> getSortedPaths() throws IOException {
         final SortingVisitor sort = new SortingVisitor(pathSorter);
         super.execute(sort);
-        final List<PathWithAttributes> sortedPaths = sort.getSortedPaths();
-        return sortedPaths;
+        return sort.getSortedPaths();
     }
 
     /**
      * Returns {@code true} if files are not deleted even when all conditions accept a path, {@code false} otherwise.
-     * 
+     *
      * @return {@code true} if files are not deleted even when all conditions accept a path, {@code false} otherwise
      */
     public boolean isTestMode() {
@@ -180,7 +180,7 @@ public class DeleteAction extends AbstractPathAction {
 
     /**
      * Create a DeleteAction.
-     * 
+     *
      * @param basePath base path from where to start scanning for files to delete.
      * @param followLinks whether to follow symbolic links. Default is false.
      * @param maxDepth The maxDepth parameter is the maximum number of levels of directories to visit. A value of 0
@@ -199,13 +199,13 @@ public class DeleteAction extends AbstractPathAction {
     @PluginFactory
     public static DeleteAction createDeleteAction(
             // @formatter:off
-            @PluginAttribute("basePath") final String basePath, 
-            @PluginAttribute(value = "followLinks") final boolean followLinks,
-            @PluginAttribute(value = "maxDepth", defaultInt = 1) final int maxDepth,
-            @PluginAttribute(value = "testMode") final boolean testMode,
-            @PluginElement("PathSorter") final PathSorter sorterParameter,
-            @PluginElement("PathConditions") final PathCondition[] pathConditions,
-            @PluginElement("ScriptCondition") final ScriptCondition scriptCondition,
+            @PluginAttribute final String basePath,
+            @PluginAttribute final boolean followLinks,
+            @PluginAttribute(defaultInt = 1) final int maxDepth,
+            @PluginAttribute final boolean testMode,
+            @PluginElement final PathSorter sorterParameter,
+            @PluginElement final PathCondition[] pathConditions,
+            @PluginElement final ScriptConditional scriptCondition,
             @PluginConfiguration final Configuration config) {
             // @formatter:on
         final PathSorter sorter = sorterParameter == null ? new PathSortByModificationTime(true) : sorterParameter;

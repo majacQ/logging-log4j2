@@ -22,7 +22,7 @@ import org.apache.logging.log4j.core.AbstractLifeCycle;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.Logger;
-import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
+import org.apache.logging.log4j.plugins.PluginBuilderAttribute;
 import org.apache.logging.log4j.message.Message;
 
 /**
@@ -69,21 +69,21 @@ public abstract class AbstractFilter extends AbstractLifeCycle implements Filter
 
         /**
          * Sets the Result to return when the filter does not match. The default is Result.DENY.
-         * @param onMismatch the Result to return when the filter does not match. 
+         * @param onMismatch the Result to return when the filter does not match.
          * @return this
          */
         public B setOnMismatch(final Result onMismatch) {
             this.onMismatch = onMismatch;
             return asBuilder();
         }
-        
+
         @SuppressWarnings("unchecked")
         public B asBuilder() {
             return (B) this;
         }
 
     }
-    
+
     /**
      * The onMatch Result.
      */
