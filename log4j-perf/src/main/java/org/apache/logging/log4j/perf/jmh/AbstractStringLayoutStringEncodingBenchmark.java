@@ -19,7 +19,6 @@ package org.apache.logging.log4j.perf.jmh;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.Marker;
@@ -34,6 +33,7 @@ import org.apache.logging.log4j.core.layout.Encoder;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.apache.logging.log4j.util.StringBuilderFormattable;
+import org.apache.logging.log4j.util.StringMap;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Mode;
@@ -99,7 +99,7 @@ public class AbstractStringLayoutStringEncodingBenchmark {
         final String fqcn = "com.mycom.myproject.mypackage.MyClass";
         final org.apache.logging.log4j.Level level = org.apache.logging.log4j.Level.DEBUG;
         final Throwable t = null;
-        final Map<String, String> mdc = null;
+        final StringMap mdc = null;
         final ThreadContext.ContextStack ndc = null;
         final String threadName = null;
         final StackTraceElement location = null;
@@ -112,7 +112,7 @@ public class AbstractStringLayoutStringEncodingBenchmark {
             .setLevel(level) //
             .setMessage(message) //
             .setThrown(t) //
-            .setContextMap(mdc) //
+            .setContextData(mdc) //
             .setContextStack(ndc) //
             .setThreadName(threadName) //
             .setSource(location) //
@@ -123,15 +123,15 @@ public class AbstractStringLayoutStringEncodingBenchmark {
     @BenchmarkMode(Mode.Throughput)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
     @Benchmark
-    public void baseline() {
-        consume(bytes);
+    public long baseline() {
+        return consume(bytes);
     }
 
     @BenchmarkMode(Mode.Throughput)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
     @Benchmark
-    public void usAsciiGetBytes() {
-        consume(usAsciiGetBytesLayout.toByteArray(logEvent));
+    public long usAsciiGetBytes() {
+        return consume(usAsciiGetBytesLayout.toByteArray(logEvent));
     }
 
     @BenchmarkMode(Mode.Throughput)
@@ -145,8 +145,8 @@ public class AbstractStringLayoutStringEncodingBenchmark {
     @BenchmarkMode(Mode.Throughput)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
     @Benchmark
-    public void iso8859_1GetBytes() {
-        consume(iso8859_1GetBytesLayout.toByteArray(logEvent));
+    public long iso8859_1GetBytes() {
+        return consume(iso8859_1GetBytesLayout.toByteArray(logEvent));
     }
 
     @BenchmarkMode(Mode.Throughput)
@@ -160,8 +160,8 @@ public class AbstractStringLayoutStringEncodingBenchmark {
     @BenchmarkMode(Mode.Throughput)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
     @Benchmark
-    public void utf8GetBytes() {
-        consume(utf8GetBytesLayout.toByteArray(logEvent));
+    public long utf8GetBytes() {
+        return consume(utf8GetBytesLayout.toByteArray(logEvent));
     }
 
     @BenchmarkMode(Mode.Throughput)
@@ -175,8 +175,8 @@ public class AbstractStringLayoutStringEncodingBenchmark {
     @BenchmarkMode(Mode.Throughput)
     @OutputTimeUnit(TimeUnit.MILLISECONDS)
     @Benchmark
-    public void utf16GetBytes() {
-        consume(utf16GetBytesLayout.toByteArray(logEvent));
+    public long utf16GetBytes() {
+        return consume(utf16GetBytesLayout.toByteArray(logEvent));
     }
 
     @BenchmarkMode(Mode.Throughput)

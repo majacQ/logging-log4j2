@@ -1,3 +1,19 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements. See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache license, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the license for the specific language governing permissions and
+ * limitations under the license.
+ */
 package org.apache.logging.log4j.core.config.plugins.convert;
 
 import java.lang.reflect.InvocationTargetException;
@@ -8,7 +24,7 @@ import org.apache.logging.log4j.status.StatusLogger;
 import org.apache.logging.log4j.util.LoaderUtil;
 
 /**
- *
+ * @Since 2.9
  */
 public class Base64Converter {
 
@@ -20,8 +36,8 @@ public class Base64Converter {
         try {
             // Base64 is available in Java 8 and up.
             Class<?> clazz = LoaderUtil.loadClass("java.util.Base64");
-            final Method getDecoder = clazz.getMethod("getDecoder", null);
-            decoder = getDecoder.invoke(null, null);
+            final Method getDecoder = clazz.getMethod("getDecoder", (Class[]) null);
+            decoder = getDecoder.invoke(null, (Object[]) null);
             clazz = decoder.getClass();
             method = clazz.getMethod("decode", String.class);
         } catch (final ClassNotFoundException ex) {

@@ -16,13 +16,26 @@
  */
 package org.apache.logging.log4j.core.appender.db;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+
+import java.io.Serializable;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.config.Property;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
+  <<<<<<< LOG4J2-1949
 import org.mockito.runners.MockitoJUnitRunner;
 
 import static org.junit.Assert.*;
@@ -32,15 +45,51 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
+  =======
+import org.mockito.junit.MockitoJUnitRunner;
+  >>>>>>> new-iso-date-time-formats
 
 @RunWith(MockitoJUnitRunner.class)
 public class AbstractDatabaseAppenderTest {
+    private static class LocalAbstractDatabaseAppender extends AbstractDatabaseAppender<LocalAbstractDatabaseManager> {
+
+        public LocalAbstractDatabaseAppender(final String name, final Filter filter, final boolean ignoreExceptions,
+                                             final LocalAbstractDatabaseManager manager) {
+            super(name, filter, null, ignoreExceptions, Property.EMPTY_ARRAY, manager);
+        }
+    }
+    private static abstract class LocalAbstractDatabaseManager extends AbstractDatabaseManager {
+        public LocalAbstractDatabaseManager(final String name, final int bufferSize) {
+            super(name, bufferSize);
+        }
+    }
+
     private LocalAbstractDatabaseAppender appender;
+
     @Mock
     private LocalAbstractDatabaseManager manager;
 
     public void setUp(final String name) {
         appender = new LocalAbstractDatabaseAppender(name, null, true, manager);
+    }
+
+    @Test
+    public void testAppend() {
+        setUp("name");
+        given(manager.commitAndClose()).willReturn(true);
+
+        final LogEvent event1 = mock(LogEvent.class);
+        final LogEvent event2 = mock(LogEvent.class);
+
+        appender.append(event1);
+        then(manager).should().isBuffered();
+        then(manager).should().writeThrough(same(event1), (Serializable) isNull());
+        reset(manager);
+
+        appender.append(event2);
+        then(manager).should().isBuffered();
+        then(manager).should().writeThrough(same(event2), (Serializable) isNull());
+        reset(manager);
     }
 
     @Test
@@ -60,17 +109,6 @@ public class AbstractDatabaseAppenderTest {
     }
 
     @Test
-    public void testStartAndStop() throws Exception {
-        setUp("name");
-
-        appender.start();
-        then(manager).should().startupInternal();
-
-        appender.stop();
-        then(manager).should().stop(0L, TimeUnit.MILLISECONDS);
-    }
-
-    @Test
     public void testReplaceManager() throws Exception {
         setUp("name");
 
@@ -87,8 +125,9 @@ public class AbstractDatabaseAppenderTest {
     }
 
     @Test
-    public void testAppend() {
+    public void testStartAndStop() throws Exception {
         setUp("name");
+  <<<<<<< LOG4J2-1949
         given(manager.commitAndClose()).willReturn(true);
 
         final LogEvent event1 = mock(LogEvent.class);
@@ -130,18 +169,13 @@ public class AbstractDatabaseAppenderTest {
         appender.onFailover(event, exception);
         verify(manager).onFailover(event);
     }
+  =======
+  >>>>>>> new-iso-date-time-formats
 
-    private static abstract class LocalAbstractDatabaseManager extends AbstractDatabaseManager {
-        public LocalAbstractDatabaseManager(final String name, final int bufferSize) {
-            super(name, bufferSize);
-        }
-    }
+        appender.start();
+        then(manager).should().startupInternal();
 
-    private static class LocalAbstractDatabaseAppender extends AbstractDatabaseAppender<LocalAbstractDatabaseManager> {
-
-        public LocalAbstractDatabaseAppender(final String name, final Filter filter, final boolean exceptionSuppressed,
-                                             final LocalAbstractDatabaseManager manager) {
-            super(name, filter, exceptionSuppressed, manager);
-        }
+        appender.stop();
+        then(manager).should().stop(0L, TimeUnit.MILLISECONDS);
     }
 }

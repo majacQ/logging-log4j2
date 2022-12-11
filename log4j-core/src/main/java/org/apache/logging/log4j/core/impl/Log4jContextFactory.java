@@ -33,6 +33,7 @@ import org.apache.logging.log4j.core.selector.ContextSelector;
 import org.apache.logging.log4j.core.util.Cancellable;
 import org.apache.logging.log4j.core.util.Constants;
 import org.apache.logging.log4j.core.util.DefaultShutdownCallbackRegistry;
+import org.apache.logging.log4j.core.util.Loader;
 import org.apache.logging.log4j.core.util.ShutdownCallbackRegistry;
 import org.apache.logging.log4j.spi.LoggerContextFactory;
 import org.apache.logging.log4j.status.StatusLogger;
@@ -46,7 +47,8 @@ public class Log4jContextFactory implements LoggerContextFactory, ShutdownCallba
 
     private static final StatusLogger LOGGER = StatusLogger.getLogger();
     private static final boolean SHUTDOWN_HOOK_ENABLED =
-        PropertiesUtil.getProperties().getBooleanProperty(ShutdownCallbackRegistry.SHUTDOWN_HOOK_ENABLED, true);
+        PropertiesUtil.getProperties().getBooleanProperty(ShutdownCallbackRegistry.SHUTDOWN_HOOK_ENABLED, true) &&
+                !Constants.IS_WEB_APP;
 
     private final ContextSelector selector;
     private final ShutdownCallbackRegistry shutdownCallbackRegistry;
@@ -94,7 +96,7 @@ public class Log4jContextFactory implements LoggerContextFactory, ShutdownCallba
 
     private static ContextSelector createContextSelector() {
         try {
-            final ContextSelector selector = LoaderUtil.newCheckedInstanceOfProperty(Constants.LOG4J_CONTEXT_SELECTOR,
+            final ContextSelector selector = Loader.newCheckedInstanceOfProperty(Constants.LOG4J_CONTEXT_SELECTOR,
                 ContextSelector.class);
             if (selector != null) {
                 return selector;
@@ -107,7 +109,7 @@ public class Log4jContextFactory implements LoggerContextFactory, ShutdownCallba
 
     private static ShutdownCallbackRegistry createShutdownCallbackRegistry() {
         try {
-            final ShutdownCallbackRegistry registry = LoaderUtil.newCheckedInstanceOfProperty(
+            final ShutdownCallbackRegistry registry = Loader.newCheckedInstanceOfProperty(
                 ShutdownCallbackRegistry.SHUTDOWN_CALLBACK_REGISTRY, ShutdownCallbackRegistry.class
             );
             if (registry != null) {
@@ -120,7 +122,7 @@ public class Log4jContextFactory implements LoggerContextFactory, ShutdownCallba
     }
 
     private void initializeShutdownCallbackRegistry() {
-        if (SHUTDOWN_HOOK_ENABLED && this.shutdownCallbackRegistry instanceof LifeCycle) {
+        if (isShutdownHookEnabled() && this.shutdownCallbackRegistry instanceof LifeCycle) {
             try {
                 ((LifeCycle) this.shutdownCallbackRegistry).start();
             } catch (final IllegalStateException e) {
@@ -314,7 +316,10 @@ public class Log4jContextFactory implements LoggerContextFactory, ShutdownCallba
 
     @Override
     public Cancellable addShutdownCallback(final Runnable callback) {
-        return SHUTDOWN_HOOK_ENABLED ? shutdownCallbackRegistry.addShutdownCallback(callback) : null;
+        return isShutdownHookEnabled() ? shutdownCallbackRegistry.addShutdownCallback(callback) : null;
     }
 
+    public boolean isShutdownHookEnabled() {
+        return SHUTDOWN_HOOK_ENABLED;
+    }
 }

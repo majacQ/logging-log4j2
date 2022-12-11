@@ -20,8 +20,8 @@ import java.net.URI;
 
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.junit.LoggerContextRule;
-import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -35,6 +35,8 @@ public class RollingAppenderDirectWriteWithReconfigureTest {
     private static final String CONFIG = "log4j-rolling-direct-reconfigure.xml";
 
     private static final String DIR = "target/rolling-direct-reconfigure";
+
+    private static final int MAX_TRIES = 10;
 
     public static LoggerContextRule loggerContextRule = LoggerContextRule
             .createShutdownTimeoutLoggerContextRule(CONFIG);
@@ -51,21 +53,22 @@ public class RollingAppenderDirectWriteWithReconfigureTest {
 
     @Test
     public void testRollingFileAppenderWithReconfigure() throws Exception {
-        // TODO fix this test on Java 8 and Java 9
-        Assume.assumeTrue("Run only on Java 7", System.getProperty("java.specification.version").equals("1.7"));
-        
         logger.debug("Before reconfigure");
 
         @SuppressWarnings("resource") // managed by the rule.
         final LoggerContext context = loggerContextRule.getLoggerContext();
+        final Configuration config = context.getConfiguration();
         context.setConfigLocation(new URI(CONFIG));
         context.reconfigure();
-
-        Thread.sleep(1000);
-
-        logger.debug("After reconfigure");
-
+        logger.debug("Force a rollover");
         final File dir = new File(DIR);
+        for (int i = 0; i < MAX_TRIES; ++i) {
+            Thread.sleep(200);
+            if (config != context.getConfiguration()) {
+                break;
+            }
+        }
+
         assertTrue("Directory not created", dir.exists() && dir.listFiles().length > 0);
         final File[] files = dir.listFiles();
         assertNotNull(files);

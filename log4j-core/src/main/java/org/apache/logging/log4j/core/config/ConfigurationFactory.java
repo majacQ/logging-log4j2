@@ -19,11 +19,7 @@ package org.apache.logging.log4j.core.config;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -178,7 +174,7 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
 
     private static void addFactory(final Collection<ConfigurationFactory> list, final String factoryClass) {
         try {
-            addFactory(list, LoaderUtil.loadClass(factoryClass).asSubclass(ConfigurationFactory.class));
+            addFactory(list, Loader.loadClass(factoryClass).asSubclass(ConfigurationFactory.class));
         } catch (final Exception ex) {
             LOGGER.error("Unable to load class {}", factoryClass, ex);
         }
@@ -239,7 +235,7 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
             return null;
         }
         if (configLocation != null) {
-            final ConfigurationSource source = getInputFromUri(configLocation);
+            final ConfigurationSource source = ConfigurationSource.fromUri(configLocation);
             if (source != null) {
                 return getConfiguration(loggerContext, source);
             }
@@ -266,7 +262,7 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
         }
         if (isClassLoaderUri(configLocation)) {
             final String path = extractClassLoaderUriPath(configLocation);
-            final ConfigurationSource source = getInputFromResource(path, loader);
+            final ConfigurationSource source = ConfigurationSource.fromResource(path, loader);
             if (source != null) {
                 final Configuration configuration = getConfiguration(loggerContext, source);
                 if (configuration != null) {
@@ -277,43 +273,7 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
         return getConfiguration(loggerContext, name, configLocation);
     }
 
-    /**
-     * Loads the configuration from a URI.
-     * @param configLocation A URI representing the location of the configuration.
-     * @return The ConfigurationSource for the configuration.
-     */
-    protected ConfigurationSource getInputFromUri(final URI configLocation) {
-        final File configFile = FileUtils.fileFromUri(configLocation);
-        if (configFile != null && configFile.exists() && configFile.canRead()) {
-            try {
-                return new ConfigurationSource(new FileInputStream(configFile), configFile);
-            } catch (final FileNotFoundException ex) {
-                LOGGER.error("Cannot locate file {}", configLocation.getPath(), ex);
-            }
-        }
-        if (isClassLoaderUri(configLocation)) {
-            final ClassLoader loader = LoaderUtil.getThreadContextClassLoader();
-            final String path = extractClassLoaderUriPath(configLocation);
-            final ConfigurationSource source = getInputFromResource(path, loader);
-            if (source != null) {
-                return source;
-            }
-        }
-        if (!configLocation.isAbsolute()) { // LOG4J2-704 avoid confusing error message thrown by uri.toURL()
-            LOGGER.error("File not found in file system or classpath: {}", configLocation.toString());
-            return null;
-        }
-        try {
-            return new ConfigurationSource(configLocation.toURL().openStream(), configLocation.toURL());
-        } catch (final MalformedURLException ex) {
-            LOGGER.error("Invalid URL {}", configLocation.toString(), ex);
-        } catch (final Exception ex) {
-            LOGGER.error("Unable to access {}", configLocation.toString(), ex);
-        }
-        return null;
-    }
-
-    private static boolean isClassLoaderUri(final URI uri) {
+    static boolean isClassLoaderUri(final URI uri) {
         if (uri == null) {
             return false;
         }
@@ -321,7 +281,7 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
         return scheme == null || scheme.equals(CLASS_LOADER_SCHEME) || scheme.equals(CLASS_PATH_SCHEME);
     }
 
-    private static String extractClassLoaderUriPath(final URI uri) {
+    static String extractClassLoaderUriPath(final URI uri) {
         return uri.getScheme() == null ? uri.getPath() : uri.getSchemeSpecificPart();
     }
 
@@ -336,7 +296,7 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
             final URL url = new URL(config);
             return new ConfigurationSource(url.openStream(), FileUtils.fileFromUri(url.toURI()));
         } catch (final Exception ex) {
-            final ConfigurationSource source = getInputFromResource(config, loader);
+            final ConfigurationSource source = ConfigurationSource.fromResource(config, loader);
             if (source == null) {
                 try {
                     final File file = new File(config);
@@ -348,39 +308,6 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
             }
             return source;
         }
-    }
-
-    /**
-     * Retrieves the configuration via the ClassLoader.
-     * @param resource The resource to load.
-     * @param loader The default ClassLoader to use.
-     * @return The ConfigurationSource for the configuration.
-     */
-    protected ConfigurationSource getInputFromResource(final String resource, final ClassLoader loader) {
-        final URL url = Loader.getResource(resource, loader);
-        if (url == null) {
-            return null;
-        }
-        InputStream is = null;
-        try {
-            is = url.openStream();
-        } catch (final IOException ioe) {
-            LOGGER.catching(Level.DEBUG, ioe);
-            return null;
-        }
-        if (is == null) {
-            return null;
-        }
-
-        if (FileUtils.isFile(url)) {
-            try {
-                return new ConfigurationSource(is, FileUtils.fileFromUri(url.toURI()));
-            } catch (final URISyntaxException ex) {
-                // Just ignore the exception.
-                LOGGER.catching(Level.DEBUG, ex);
-            }
-        }
-        return new ConfigurationSource(is, url);
     }
 
     /**
@@ -463,17 +390,19 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
             if (config != null) {
                 return config;
             }
-            LOGGER.error("No log4j2 configuration file found. " +
-                    "Using default configuration: logging only errors to the console. " +
+            LOGGER.error("No Log4j 2 configuration file found. " +
+                    "Using default configuration (logging only errors to the console), " +
+                    "or user programmatically provided configurations. " +
                     "Set system property 'log4j2.debug' " +
-                    "to show Log4j2 internal initialization logging.");
+                    "to show Log4j 2 internal initialization logging. " +
+                    "See https://logging.apache.org/log4j/2.x/manual/configuration.html for instructions on how to configure Log4j 2");
             return new DefaultConfiguration();
         }
 
         private Configuration getConfiguration(final LoggerContext loggerContext, final String configLocationStr) {
             ConfigurationSource source = null;
             try {
-                source = getInputFromUri(NetUtils.toURI(configLocationStr));
+                source = ConfigurationSource.fromUri(NetUtils.toURI(configLocationStr));
             } catch (final Exception ex) {
                 // Ignore the error and try as a String.
                 LOGGER.catching(Level.DEBUG, ex);
@@ -517,7 +446,7 @@ public abstract class ConfigurationFactory extends ConfigurationBuilderFactory {
                     }
                     configName = named ? prefix + name + suffix : prefix + suffix;
 
-                    final ConfigurationSource source = getInputFromResource(configName, loader);
+                    final ConfigurationSource source = ConfigurationSource.fromResource(configName, loader);
                     if (source != null) {
                         if (!factory.isActive()) {
                             LOGGER.warn("Found configuration file {} for inactive ConfigurationFactory {}", configName, factory.getClass().getName());

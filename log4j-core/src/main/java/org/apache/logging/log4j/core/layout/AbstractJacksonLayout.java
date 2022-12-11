@@ -19,17 +19,27 @@ package org.apache.logging.log4j.core.layout;
 import java.io.IOException;
 import java.io.Writer;
 import java.nio.charset.Charset;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
-import org.apache.logging.log4j.core.impl.MutableLogEvent;
+import org.apache.logging.log4j.core.config.plugins.PluginElement;
+import org.apache.logging.log4j.core.impl.Log4jLogEvent;
+import org.apache.logging.log4j.core.jackson.XmlConstants;
+import org.apache.logging.log4j.core.lookup.StrSubstitutor;
+import org.apache.logging.log4j.core.util.KeyValuePair;
 import org.apache.logging.log4j.core.util.StringBuilderWriter;
 import org.apache.logging.log4j.util.Strings;
 
+import com.fasterxml.jackson.annotation.JsonAnyGetter;
+import com.fasterxml.jackson.annotation.JsonRootName;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import com.fasterxml.jackson.core.JsonGenerationException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
 
 abstract class AbstractJacksonLayout extends AbstractStringLayout {
 
@@ -40,10 +50,10 @@ abstract class AbstractJacksonLayout extends AbstractStringLayout {
 
         @PluginBuilderAttribute
         private boolean eventEol;
-        
+
         @PluginBuilderAttribute
         private boolean compact;
-        
+
         @PluginBuilderAttribute
         private boolean complete;
 
@@ -58,6 +68,12 @@ abstract class AbstractJacksonLayout extends AbstractStringLayout {
 
         @PluginBuilderAttribute
         private boolean stacktraceAsString = false;
+
+        @PluginBuilderAttribute
+        private boolean includeNullDelimiter = false;
+
+        @PluginElement("AdditionalField")
+        private KeyValuePair[] additionalFields;
 
         protected String toStringOrNull(final byte[] header) {
             return header == null ? null : new String(header, Charset.defaultCharset());
@@ -95,6 +111,12 @@ abstract class AbstractJacksonLayout extends AbstractStringLayout {
             return stacktraceAsString;
         }
 
+        public boolean isIncludeNullDelimiter() { return includeNullDelimiter; }
+
+        public KeyValuePair[] getAdditionalFields() {
+            return additionalFields;
+        }
+
         public B setEventEol(final boolean eventEol) {
             this.eventEol = eventEol;
             return asBuilder();
@@ -130,8 +152,33 @@ abstract class AbstractJacksonLayout extends AbstractStringLayout {
             return asBuilder();
         }
 
-        public B setStacktraceAsString(boolean stacktraceAsString) {
+        /**
+         * Whether to format the stacktrace as a string, and not a nested object (optional, defaults to false).
+         *
+         * @return this builder
+         */
+        public B setStacktraceAsString(final boolean stacktraceAsString) {
             this.stacktraceAsString = stacktraceAsString;
+            return asBuilder();
+        }
+
+        /**
+         * Whether to include NULL byte as delimiter after each event (optional, default to false).
+         *
+         * @return this builder
+         */
+        public B setIncludeNullDelimiter(final boolean includeNullDelimiter) {
+            this.includeNullDelimiter = includeNullDelimiter;
+            return asBuilder();
+        }
+
+        /**
+         * Additional fields to set on each log event.
+         *
+         * @return this builder
+         */
+        public B setAdditionalFields(final KeyValuePair[] additionalFields) {
+            this.additionalFields = additionalFields;
             return asBuilder();
         }
     }
@@ -140,15 +187,59 @@ abstract class AbstractJacksonLayout extends AbstractStringLayout {
     protected final ObjectWriter objectWriter;
     protected final boolean compact;
     protected final boolean complete;
+    protected final boolean includeNullDelimiter;
+    protected final ResolvableKeyValuePair[] additionalFields;
 
+    @Deprecated
     protected AbstractJacksonLayout(final Configuration config, final ObjectWriter objectWriter, final Charset charset,
             final boolean compact, final boolean complete, final boolean eventEol, final Serializer headerSerializer,
             final Serializer footerSerializer) {
+        this(config, objectWriter, charset, compact, complete, eventEol, headerSerializer, footerSerializer, false);
+    }
+
+    @Deprecated
+    protected AbstractJacksonLayout(final Configuration config, final ObjectWriter objectWriter, final Charset charset,
+            final boolean compact, final boolean complete, final boolean eventEol, final Serializer headerSerializer,
+            final Serializer footerSerializer, final boolean includeNullDelimiter) {
+        this(config, objectWriter, charset, compact, complete, eventEol, headerSerializer, footerSerializer, includeNullDelimiter, null);
+    }
+
+    protected AbstractJacksonLayout(final Configuration config, final ObjectWriter objectWriter, final Charset charset,
+            final boolean compact, final boolean complete, final boolean eventEol, final Serializer headerSerializer,
+            final Serializer footerSerializer, final boolean includeNullDelimiter,
+            final KeyValuePair[] additionalFields) {
         super(config, charset, headerSerializer, footerSerializer);
         this.objectWriter = objectWriter;
         this.compact = compact;
         this.complete = complete;
         this.eol = compact && !eventEol ? COMPACT_EOL : DEFAULT_EOL;
+        this.includeNullDelimiter = includeNullDelimiter;
+        this.additionalFields = prepareAdditionalFields(config, additionalFields);
+    }
+
+    protected static boolean valueNeedsLookup(final String value) {
+        return value != null && value.contains("${");
+    }
+
+    private static ResolvableKeyValuePair[] prepareAdditionalFields(final Configuration config, final KeyValuePair[] additionalFields) {
+        if (additionalFields == null || additionalFields.length == 0) {
+            // No fields set
+            return new ResolvableKeyValuePair[0];
+        }
+
+        // Convert to specific class which already determines whether values needs lookup during serialization
+        final ResolvableKeyValuePair[] resolvableFields = new ResolvableKeyValuePair[additionalFields.length];
+
+        for (int i = 0; i < additionalFields.length; i++) {
+            final ResolvableKeyValuePair resolvable = resolvableFields[i] = new ResolvableKeyValuePair(additionalFields[i]);
+
+            // Validate
+            if (config == null && resolvable.valueNeedsLookup) {
+                throw new IllegalArgumentException("configuration needs to be set when there are additional fields with variables");
+            }
+        }
+
+        return resolvableFields;
     }
 
     /**
@@ -174,16 +265,84 @@ abstract class AbstractJacksonLayout extends AbstractStringLayout {
         // TODO Jackson-based layouts have certain filters set up for Log4jLogEvent.
         // TODO Need to set up the same filters for MutableLogEvent but don't know how...
         // This is a workaround.
-        return event instanceof MutableLogEvent
-                ? ((MutableLogEvent) event).createMemento()
-                : event;
+        return event instanceof Log4jLogEvent ? event : Log4jLogEvent.createMemento(event);
+    }
+
+    protected Object wrapLogEvent(final LogEvent event) {
+        if (additionalFields.length > 0) {
+            // Construct map for serialization - note that we are intentionally using original LogEvent
+            final Map<String, String> additionalFieldsMap = resolveAdditionalFields(event);
+            // This class combines LogEvent with AdditionalFields during serialization
+            return new LogEventWithAdditionalFields(event, additionalFieldsMap);
+        } else {
+            // No additional fields, return original object
+            return event;
+        }
+    }
+
+    private Map<String, String> resolveAdditionalFields(final LogEvent logEvent) {
+        // Note: LinkedHashMap retains order
+        final Map<String, String> additionalFieldsMap = new LinkedHashMap<>(additionalFields.length);
+        final StrSubstitutor strSubstitutor = configuration.getStrSubstitutor();
+
+        // Go over each field
+        for (final ResolvableKeyValuePair pair : additionalFields) {
+            if (pair.valueNeedsLookup) {
+                // Resolve value
+                additionalFieldsMap.put(pair.key, strSubstitutor.replace(logEvent, pair.value));
+            } else {
+                // Plain text value
+                additionalFieldsMap.put(pair.key, pair.value);
+            }
+        }
+
+        return additionalFieldsMap;
     }
 
     public void toSerializable(final LogEvent event, final Writer writer)
             throws JsonGenerationException, JsonMappingException, IOException {
-        objectWriter.writeValue(writer, convertMutableToLog4jEvent(event));
+        objectWriter.writeValue(writer, wrapLogEvent(convertMutableToLog4jEvent(event)));
         writer.write(eol);
+        if (includeNullDelimiter) {
+            writer.write('\0');
+        }
         markEvent();
     }
 
+    @JsonRootName(XmlConstants.ELT_EVENT)
+    @JacksonXmlRootElement(namespace = XmlConstants.XML_NAMESPACE, localName = XmlConstants.ELT_EVENT)
+    public static class LogEventWithAdditionalFields {
+
+        private final Object logEvent;
+        private final Map<String, String> additionalFields;
+
+        public LogEventWithAdditionalFields(final Object logEvent, final Map<String, String> additionalFields) {
+            this.logEvent = logEvent;
+            this.additionalFields = additionalFields;
+        }
+
+        @JsonUnwrapped
+        public Object getLogEvent() {
+            return logEvent;
+        }
+
+        @JsonAnyGetter
+        @SuppressWarnings("unused")
+        public Map<String, String> getAdditionalFields() {
+            return additionalFields;
+        }
+    }
+
+    protected static class ResolvableKeyValuePair {
+
+        final String key;
+        final String value;
+        final boolean valueNeedsLookup;
+
+        ResolvableKeyValuePair(final KeyValuePair pair) {
+            this.key = pair.getKey();
+            this.value = pair.getValue();
+            this.valueNeedsLookup = AbstractJacksonLayout.valueNeedsLookup(this.value);
+        }
+    }
 }

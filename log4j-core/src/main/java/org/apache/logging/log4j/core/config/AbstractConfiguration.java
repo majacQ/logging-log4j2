@@ -43,6 +43,7 @@ import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LifeCycle2;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.Version;
 import org.apache.logging.log4j.core.appender.AsyncAppender;
 import org.apache.logging.log4j.core.appender.ConsoleAppender;
 import org.apache.logging.log4j.core.async.AsyncLoggerConfig;
@@ -121,8 +122,8 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
     private ConcurrentMap<String, Appender> appenders = new ConcurrentHashMap<>();
     private ConcurrentMap<String, LoggerConfig> loggerConfigs = new ConcurrentHashMap<>();
     private List<CustomLevelConfig> customLevels = Collections.emptyList();
-    private final ConcurrentMap<String, String> properties = new ConcurrentHashMap<>();
-    private final StrLookup tempLookup = new Interpolator(properties);
+    private final ConcurrentMap<String, String> propertyMap = new ConcurrentHashMap<>();
+    private final StrLookup tempLookup = new Interpolator(propertyMap);
     private final StrSubstitutor subst = new StrSubstitutor(tempLookup);
     private LoggerConfig root = new LoggerConfig();
     private final ConcurrentMap<String, Object> componentMap = new ConcurrentHashMap<>();
@@ -141,7 +142,7 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
         // The loggerContext is null for the NullConfiguration class.
         // this.loggerContext = new WeakReference(Objects.requireNonNull(loggerContext, "loggerContext is null"));
         this.configurationSource = Objects.requireNonNull(configurationSource, "configurationSource is null");
-        componentMap.put(Configuration.CONTEXT_PROPERTIES, properties);
+        componentMap.put(Configuration.CONTEXT_PROPERTIES, propertyMap);
         pluginManager = new PluginManager(Node.CATEGORY);
         rootNode = new Node();
         setState(State.INITIALIZING);
@@ -160,7 +161,7 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
 
     @Override
     public Map<String, String> getProperties() {
-        return properties;
+        return propertyMap;
     }
 
     @Override
@@ -209,7 +210,7 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
      */
     @Override
     public void initialize() {
-        LOGGER.debug("Initializing configuration {}", this);
+        LOGGER.debug(Version.getProductString() + " initializing configuration {}", this);
         subst.setConfiguration(this);
         try {
             scriptManager = new ScriptManager(this, watchManager);
@@ -239,7 +240,7 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
         LOGGER.debug("Configuration {} initialized", this);
     }
 
-    /**
+	/**
      * Start the configuration.
      */
     @Override
@@ -654,7 +655,7 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
     @Override
     @SuppressWarnings("unchecked")
     public <T extends Appender> T getAppender(final String appenderName) {
-        return (T) appenders.get(appenderName);
+        return appenderName != null ? (T) appenders.get(appenderName) : null;
     }
 
     /**
@@ -674,7 +675,9 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
      */
     @Override
     public void addAppender(final Appender appender) {
-        appenders.putIfAbsent(appender.getName(), appender);
+        if (appender != null) {
+            appenders.putIfAbsent(appender.getName(), appender);
+        }
     }
 
     @Override
@@ -715,6 +718,9 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
     @Override
     public synchronized void addLoggerAppender(final org.apache.logging.log4j.core.Logger logger,
             final Appender appender) {
+        if (appender == null || logger == null) {
+            return;
+        }
         final String loggerName = logger.getName();
         appenders.putIfAbsent(appender.getName(), appender);
         final LoggerConfig lc = getLoggerConfig(loggerName);
@@ -790,7 +796,7 @@ public abstract class AbstractConfiguration extends AbstractFilterable implement
         for (final LoggerConfig logger : loggerConfigs.values()) {
             logger.removeAppender(appenderName);
         }
-        final Appender app = appenders.remove(appenderName);
+        final Appender app = appenderName != null ? appenders.remove(appenderName) : null;
 
         if (app != null) {
             app.stop();

@@ -52,7 +52,7 @@ public class SecureSocketAppenderSocketOptionsTest {
         PORT = AvailablePortFinder.getNextAvailable();
         System.setProperty("SecureSocketAppenderSocketOptionsTest.port", Integer.toString(PORT));
         try {
-            initServerSocketFactory();            
+            initServerSocketFactory();
             tcpSocketTestServer = new TcpSocketTestServer(serverSocketFactory.createServerSocket(PORT));
             tcpSocketTestServer.start();
             loggerContextRule = new LoggerContextRule("log4j-ssl-socket-options.xml");
@@ -73,10 +73,21 @@ public class SecureSocketAppenderSocketOptionsTest {
     }
 
     public static void initServerSocketFactory() throws StoreConfigurationException {
-        final KeyStoreConfiguration ksc = new KeyStoreConfiguration(TestConstants.KEYSTORE_FILE,
-                TestConstants.KEYSTORE_PWD, null, null);
-        final TrustStoreConfiguration tsc = new TrustStoreConfiguration(TestConstants.TRUSTSTORE_FILE,
-                TestConstants.TRUSTSTORE_PWD, null, null);
+        final KeyStoreConfiguration ksc = KeyStoreConfiguration.createKeyStoreConfiguration(
+                TestConstants.KEYSTORE_FILE, // file
+                TestConstants.KEYSTORE_PWD(),  // password
+                null, // passwordEnvironmentVariable
+                null, // passwordFile
+                null, // key store type
+                null); // algorithm
+
+        final TrustStoreConfiguration tsc = TrustStoreConfiguration.createKeyStoreConfiguration(
+                TestConstants.TRUSTSTORE_FILE, // file
+                TestConstants.TRUSTSTORE_PWD(), // password
+                null, // passwordEnvironmentVariable
+                null, // passwordFile
+                null, // key store type
+                null); // algorithm
         sslConfiguration = SslConfiguration.createSSLConfiguration(null, ksc, tsc);
         serverSocketFactory = sslConfiguration.getSslServerSocketFactory();
     }

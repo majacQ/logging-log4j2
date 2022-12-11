@@ -21,9 +21,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -101,6 +103,31 @@ public final class LoaderUtil {
             final ClassLoader ccl = LoaderUtil.class.getClassLoader();
             return ccl == null && !GET_CLASS_LOADER_DISABLED ? ClassLoader.getSystemClassLoader() : ccl;
         }
+    }
+
+    public static ClassLoader[] getClassLoaders() {
+        final List<ClassLoader> classLoaders = new ArrayList<>();
+        final ClassLoader tcl = getThreadContextClassLoader();
+        classLoaders.add(tcl);
+        // Some implementations may use null to represent the bootstrap class loader.
+        final ClassLoader current = LoaderUtil.class.getClassLoader();
+        if (current != null && current != tcl) {
+            classLoaders.add(current);
+            final ClassLoader parent = current.getParent();
+            while (parent != null && !classLoaders.contains(parent)) {
+                classLoaders.add(parent);
+            }
+        }
+        ClassLoader parent = tcl == null ? null : tcl.getParent();
+        while (parent != null && !classLoaders.contains(parent)) {
+            classLoaders.add(parent);
+            parent = parent.getParent();
+        }
+        final ClassLoader systemClassLoader = ClassLoader.getSystemClassLoader();
+		if (!classLoaders.contains(systemClassLoader)) {
+            classLoaders.add(systemClassLoader);
+        }
+        return classLoaders.toArray(new ClassLoader[classLoaders.size()]);
     }
 
     /**
@@ -252,8 +279,12 @@ public final class LoaderUtil {
     }
 
     static Collection<UrlResource> findUrlResources(final String resource) {
-        final ClassLoader[] candidates = {getThreadContextClassLoader(), LoaderUtil.class.getClassLoader(),
+        // @formatter:off
+        final ClassLoader[] candidates = {
+                getThreadContextClassLoader(), 
+                LoaderUtil.class.getClassLoader(),
                 GET_CLASS_LOADER_DISABLED ? null : ClassLoader.getSystemClassLoader()};
+        // @formatter:on
         final Collection<UrlResource> resources = new LinkedHashSet<>();
         for (final ClassLoader cl : candidates) {
             if (cl != null) {

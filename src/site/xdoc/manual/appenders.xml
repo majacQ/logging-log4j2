@@ -97,7 +97,7 @@
             <tr>
               <td>bufferSize</td>
               <td>integer</td>
-              <td>Specifies the maximum number of events that can be queued. The default is 128. Note that when using a
+              <td>Specifies the maximum number of events that can be queued. The default is 1024. Note that when using a
                 disruptor-style <tt>BlockingQueue</tt>, this buffer size must be a power of 2.
                 <p>
                   When the application is logging faster than the underlying appender can keep up with
@@ -380,7 +380,7 @@
     </Cassandra>
   </Appenders>
   <Loggers>
-    <Logger name="org.apache.logging.log4j.nosql.appender.cassandra" level="DEBUG">
+    <Logger name="org.apache.logging.log4j.cassandra" level="DEBUG">
       <AppenderRef ref="Cassandra"/>
     </Logger>
     <Root level="ERROR"/>
@@ -991,6 +991,11 @@ CREATE TABLE logs (
             style that only allows strings and timestamps, and the new <code>ColumnMapping</code> plugin that uses Log4j's
             built-in type conversion to allow for more data types (this is the same plugin as in the
             <a href="#CassandraAppender">Cassandra Appender</a>).</p>
+          <p>
+            To get off the ground quickly during development, an alternative to using a connection source based on 
+            JNDI is to use the non-pooling <code>DriverManager</code> connection source. This connection source uses 
+            a JDBC connection string, a user name, and a password. Optionally, you can also use properties.
+          </p>
           <table>
             <caption align="top">JDBCAppender Parameters</caption>
             <tr>
@@ -1061,10 +1066,32 @@ CREATE TABLE logs (
                 pattern specified will be converted into the configured type and stored in that column.
               </td>
             </tr>
+            <tr>
+              <td>immediateFail</td>
+              <td>boolean</td>
+              <td>false</td>
+              <td>When set to true, log events will not wait to try to reconnect and will fail immediately if the
+              JDBC resources are not available. New in 2.11.2</td>
+            </tr>
+            <tr>
+              <td>reconnectIntervalMillis</td>
+              <td>long</td>
+              <td>5000</td>
+              <td>If set to a value greater than 0, after an error, the JDBCDatabaseManager will attempt to reconnect to
+                the database after waiting the specified number of milliseconds. If the reconnect fails then
+                an exception will be thrown (which can be caught by the application if <code>ignoreExceptions</code> is
+                set to <code>false</code>). New in 2.11.2.</td>
+            </tr>
           </table>
           <p>When configuring the JDBCAppender, you must specify a <code>ConnectionSource</code> implementation from
-            which the Appender gets JDBC connections. You must use exactly one of the <code>&lt;DataSource&gt;</code>
-            or <code>&lt;ConnectionFactory&gt;</code> nested elements.</p>
+            which the Appender gets JDBC connections. You must use exactly one of the following nested elements:</p>
+          <ul>
+            <li><a href="#JDBCDataSource"><code>&lt;DataSource&gt;</code></a>: Uses JNDI.</li>
+            <li><a href="#JDBCConnectionFactory"><code>&lt;ConnectionFactory&gt;</code></a>: Points to a class-method pair to provide JDBC connections.</li>
+            <li><a href="#JDBCDriverManager"><code>&lt;DriverManager&gt;</code></a>: A quick and dirty way to get off the ground, no connection pooling.</li>
+            <li><a href="#JDBCPoolingDriver"><code>&lt;PoolingDriver&gt;</code></a>: Uses Apache Commons DBCP to provide connection pooling.</li>
+          </ul>
+          <a name="JDBCDataSource"/>
           <table>
             <caption align="top">DataSource Parameters</caption>
             <tr>
@@ -1080,6 +1107,7 @@ CREATE TABLE logs (
                 by a connection pool; otherwise, logging will be very slow.</td>
             </tr>
           </table>
+          <a name="JDBCConnectionFactory"/>
           <table>
             <caption align="top">ConnectionFactory Parameters</caption>
             <tr>
@@ -1104,11 +1132,235 @@ CREATE TABLE logs (
                 only be retrieved once, and it must be backed by a connection pool for the same reasons.</td>
             </tr>
           </table>
+          <a name="JDBCDriverManager"/>
+          <table>
+            <caption align="top">DriverManager Parameters</caption>
+            <tr>
+              <th>Parameter Name</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>connectionString</td>
+              <td>String</td>
+              <td><em>Required.</em> The driver-specific JDBC connection string.</td>
+            </tr>
+            <tr>
+              <td>userName</td>
+              <td>String</td>
+              <td>The database user name. You cannot specify both properties and a user name or password.</td>
+            </tr>
+            <tr>
+              <td>password</td>
+              <td>String</td>
+              <td>The database password. You cannot specify both properties and a user name or password.</td>
+            </tr>
+            <tr>
+              <td>driverClassName</td>
+              <td>String</td>
+              <td>The JDBC driver class name. Some old JDBC Driver can only be discovered by explicitly loading them by class name.</td>
+            </tr>
+            <tr>
+              <td>properties</td>
+              <td>Property[]</td>
+              <td>A list of properties. You cannot specify both properties and a user name or password.</td>
+            </tr>
+          </table>
+          <a name="JDBCPoolingDriver"/>
+          <table>
+            <caption align="top">PoolingDriver Parameters (Apache Commons DBCP)</caption>
+            <tr>
+              <th>Parameter Name</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>DriverManager parameters</td>
+              <td>DriverManager parameters</td>
+              <td>This connection source inherits all parameter from the DriverManager connection source.</td>
+            </tr>
+            <tr>
+              <td>poolName</td>
+              <td>String</td>
+              <td>The pool name used to pool JDBC Connections. Defaults to <code>example</code>. You can use the JDBC 
+              connection string prefix <code>jdbc:apache:commons:dbcp:</code> followed by the pool name if you want 
+              to use a pooled connection elsewhere. For example: <code>jdbc:apache:commons:dbcp:example</code>.</td>
+            </tr>
+            <tr>
+              <td>PoolableConnectionFactory</td>
+              <td>PoolableConnectionFactory element</td>
+              <td>Defines a PoolableConnectionFactory.</td>
+            </tr>
+          </table>
+          <a name="JDBCPoolableConnectionFactory"/>
+          <table>
+            <caption align="top">PoolableConnectionFactory Parameters (Apache Commons DBCP)</caption>
+            <tr>
+              <th>Parameter Name</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>autoCommitOnReturn</td>
+              <td>boolean</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>cacheState</td>
+              <td>boolean</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>ConnectionInitSqls</td>
+              <td>Strings</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>defaultAutoCommit</td>
+              <td>boolean</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>defaultCatalog</td>
+              <td>String</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>defaultQueryTimeoutSeconds</td>
+              <td>integer</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>defaultReadOnly</td>
+              <td>boolean</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>defaultTransactionIsolation</td>
+              <td>integer</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>disconnectionSqlCodes</td>
+              <td>Strings</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>fastFailValidation</td>
+              <td>boolean</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>maxConnLifetimeMillis</td>
+              <td>long</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>maxOpenPreparedStatements</td>
+              <td>integer</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>poolStatements</td>
+              <td>boolean</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>rollbackOnReturn</td>
+              <td>boolean</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>validationQuery</td>
+              <td>String</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+            <tr>
+              <td>validationQueryTimeoutSeconds</td>
+              <td>integer</td>
+              <td>See <a href="http://commons.apache.org/proper/commons-dbcp/api-2.4.0/org/apache/commons/dbcp2/PoolableConnectionFactory.html">Apache Commons DBCP PoolableConnectionFactory.</a></td>
+            </tr>
+          </table>
           <p>When configuring the JDBCAppender, use the nested <code>&lt;Column&gt;</code> elements to specify which
             columns in the table should be written to and how to write to them. The JDBCAppender uses this information
             to formulate a <code>PreparedStatement</code> to insert records without SQL injection vulnerability.</p>
           <table>
             <caption align="top">Column Parameters</caption>
+            <tr>
+              <th>Parameter Name</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>name</td>
+              <td>String</td>
+              <td><em>Required.</em> The name of the database column.</td>
+            </tr>
+            <tr>
+              <td>pattern</td>
+              <td>String</td>
+              <td>Use this attribute to insert a value or values from the log event in this column using a
+                <code>PatternLayout</code> pattern. Simply specify any legal pattern in this attribute. Either this
+                attribute, <code>literal</code>, or <code>isEventTimestamp="true"</code> must be specified, but not more
+                than one of these.</td>
+            </tr>
+            <tr>
+              <td>literal</td>
+              <td>String</td>
+              <td>
+                <p>Use this attribute to insert a literal value in this column. The value will be included directly in
+                the insert SQL, without any quoting (which means that if you want this to be a string, your value should
+                contain single quotes around it like this: <code>literal="'Literal String'"</code>). This is especially
+                useful for databases that don't support identity columns. For example, if you are using Oracle you could
+                specify <code>literal="NAME_OF_YOUR_SEQUENCE.NEXTVAL"</code> to insert a unique ID in an ID column.
+                Either this attribute, <code>pattern</code>, or <code>isEventTimestamp="true"</code> must be specified,
+                but not more than one of these.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td>parameter</td>
+              <td>String</td>
+              <td>
+                <p>Use this attribute to insert an expression with a parameter marker '?' in this column. The value will be included directly in
+                the insert SQL, without any quoting (which means that if you want this to be a string, your value should
+                contain single quotes around it like this: 
+                </p>
+                <p>
+                  <code>&lt;ColumnMapping name="instant" parameter="TIMESTAMPADD('MILLISECOND', ?, TIMESTAMP '1970-01-01')"/></code>
+                </p>
+                <p>
+                  You can only specify one of <code>literal</code> or <code>parameter</code>.
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td>isEventTimestamp</td>
+              <td>boolean</td>
+              <td>Use this attribute to insert the event timestamp in this column, which should be a SQL datetime. The
+                value will be inserted as a <code>java.sql.Types.TIMESTAMP</code>. Either this attribute (equal to
+                <code>true</code>), <code>pattern</code>, or <code>isEventTimestamp</code> must be specified, but not
+                more than one of these.</td>
+            </tr>
+            <tr>
+              <td>isUnicode</td>
+              <td>boolean</td>
+              <td>This attribute is ignored unless <code>pattern</code> is specified. If <code>true</code> or omitted
+                (default), the value will be inserted as unicode (<code>setNString</code> or <code>setNClob</code>).
+                Otherwise, the value will be inserted non-unicode (<code>setString</code> or <code>setClob</code>).</td>
+            </tr>
+            <tr>
+              <td>isClob</td>
+              <td>boolean</td>
+              <td>This attribute is ignored unless <code>pattern</code> is specified. Use this attribute to indicate
+                that the column stores Character Large Objects (CLOBs). If <code>true</code>, the value will be inserted
+                as a CLOB (<code>setClob</code> or <code>setNClob</code>). If <code>false</code> or omitted (default),
+                the value will be inserted as a VARCHAR or NVARCHAR (<code>setString</code> or <code>setNString</code>).
+              </td>
+            </tr>
+          </table>
+          <table>
+            <caption align="top">ColumnMapping Parameters</caption>
             <tr>
               <th>Parameter Name</th>
               <th>Type</th>
@@ -1139,28 +1391,14 @@ CREATE TABLE logs (
                 but not more than one of these.</td>
             </tr>
             <tr>
-              <td>isEventTimestamp</td>
-              <td>boolean</td>
-              <td>Use this attribute to insert the event timestamp in this column, which should be a SQL datetime. The
-                value will be inserted as a <code>java.sql.Types.TIMESTAMP</code>. Either this attribute (equal to
-                <code>true</code>), <code>pattern</code>, or <code>isEventTimestamp</code> must be specified, but not
-                more than one of these.</td>
+              <td>layout</td>
+              <td>Layout</td>
+              <td>The Layout to format the LogEvent.</td>
             </tr>
             <tr>
-              <td>isUnicode</td>
-              <td>boolean</td>
-              <td>This attribute is ignored unless <code>pattern</code> is specified. If <code>true</code> or omitted
-                (default), the value will be inserted as unicode (<code>setNString</code> or <code>setNClob</code>).
-                Otherwise, the value will be inserted non-unicode (<code>setString</code> or <code>setClob</code>).</td>
-            </tr>
-            <tr>
-              <td>isClob</td>
-              <td>boolean</td>
-              <td>This attribute is ignored unless <code>pattern</code> is specified. Use this attribute to indicate
-                that the column stores Character Large Objects (CLOBs). If <code>true</code>, the value will be inserted
-                as a CLOB (<code>setClob</code> or <code>setNClob</code>). If <code>false</code> or omitted (default),
-                the value will be inserted as a VARCHAR or NVARCHAR (<code>setString</code> or <code>setNString</code>).
-              </td>
+              <td>type</td>
+              <td>String</td>
+              <td>Conversion type name, a fully-qualified class name.</td>
             </tr>
           </table>
           <p>
@@ -1247,6 +1485,41 @@ public class ConnectionFactory {
         return Singleton.INSTANCE.dataSource.getConnection();
     }
 }]]></pre>
+          <p>
+            This appender is <a href="messages.html#MapMessage">MapMessage</a>-aware.
+          </p>
+          <p>
+            The following configuration uses a <code>MessageLayout</code> to indicate that the Appender should match 
+            the keys of a <code>MapMessage</code> to the names of <code>ColumnMapping</code>s when setting the 
+            values of the Appender's SQL INSERT statement. This let you insert rows for custom values in a 
+            database table based on a Log4j <code>MapMessage</code> instead of values from <code>LogEvent</code>s.
+          </p>
+          <pre class="prettyprint linenums lang-xml"><![CDATA[<Configuration status="debug">
+
+  <Appenders>
+    <Console name="STDOUT">
+      <PatternLayout pattern="%C{1.} %m %level MDC%X%n"/>
+    </Console>
+    <Jdbc name="databaseAppender" tableName="dsLogEntry" ignoreExceptions="false">
+      <DataSource jndiName="java:/comp/env/jdbc/TestDataSourceAppender" />
+      <ColumnMapping name="Id" />
+      <ColumnMapping name="ColumnA" />
+      <ColumnMapping name="ColumnB" />
+      <MessageLayout />
+    </Jdbc>
+  </Appenders>
+
+  <Loggers>
+    <Logger name="org.apache.logging.log4j.core.appender.db" level="debug" additivity="false">
+      <AppenderRef ref="databaseAppender" />
+    </Logger>
+
+    <Root level="fatal">
+      <AppenderRef ref="STDOUT"/>
+    </Root>
+  </Loggers>
+
+</Configuration>]]></pre>          
         </subsection>
         <a name="JMSAppender"/>
         <!-- cool URLs don't change, so here are some old anchors -->
@@ -1284,7 +1557,7 @@ public class ConnectionFactory {
               <td><em>Required</em></td>
               <td>The fully qualified class name that should be used to define the Initial Context Factory as defined in
                 <a class="javadoc" href="http://download.oracle.com/javase/7/docs/api/javax/naming/Context.html#INITIAL_CONTEXT_FACTORY">INITIAL_CONTEXT_FACTORY</a>.
-                If a factoryName is specified without a providerURL a warning message will be logged as this is 
+                If a factoryName is specified without a providerURL a warning message will be logged as this is
                 likely to cause problems.
               </td>
             </tr>
@@ -1414,7 +1687,7 @@ public class ConnectionFactory {
 </Configuration>]]></pre>
 
         <p>
-          To map your Log4j <code>MapMessage</code>s to JMS <code>javax.jms.MapMessage</code>s, set the 
+          To map your Log4j <code>MapMessage</code>s to JMS <code>javax.jms.MapMessage</code>s, set the
           layout of the appender to <code>MessageLayout</code> with <code>&lt;MessageLayout /&gt;</code> (Since 2.9.):
         </p>
 
@@ -1432,10 +1705,13 @@ public class ConnectionFactory {
     </Root>
   </Loggers>
 </Configuration>]]></pre>
-        
+
         </subsection>
         <a name="JPAAppender"/>
         <subsection name="JPAAppender">
+          <p>
+             As of Log4j 2.11.0, JPA support has moved from the existing module <code>logj-core</code> to the new module <code>log4j-jpa</code>.
+          </p>
           <p>The JPAAppender writes log events to a relational database table using the Java Persistence API 2.1.
             It requires the API and a provider implementation be on the classpath. It also requires a decorated entity
             configured to persist to the table desired. The entity should either extend
@@ -1658,7 +1934,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               <td>Ssl</td>
               <td>SslConfiguration</td>
               <td>Contains the configuration for the KeyStore and TrustStore for https.
-                  Optional, uses Java runtime defaults if not specified.</td>
+                  Optional, uses Java runtime defaults if not specified. See <a href="#SSL">SSL</a></td>
             </tr>
             <tr>
               <td>verifyHostname</td>
@@ -1710,8 +1986,8 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
       <Property name="X-Java-Runtime" value="$${java:runtime}" />
       <JsonLayout properties="true"/>
       <SSL>
-        <KeyStore location="log4j2-keystore.jks" password="changeme"/>
-        <TrustStore location="truststore.jks" password="changeme"/>
+        <KeyStore   location="log4j2-keystore.jks" passwordEnvironmentVariable="KEYSTORE_PASSWORD"/>
+        <TrustStore location="truststore.jks"      passwordFile="${sys:user.home}/truststore.pwd"/>
       </SSL>
     </Http>
   </Appenders>]]></pre>
@@ -1720,7 +1996,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
         <subsection name="KafkaAppender">
           <p>
             The KafkaAppender logs events to an <a href="https://kafka.apache.org/">Apache Kafka</a> topic.
-            Each log event is sent as a Kafka record with no key.
+            Each log event is sent as a Kafka record.
           </p>
           <table>
             <caption align="top">KafkaAppender Parameters</caption>
@@ -1735,6 +2011,13 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               <td>The Kafka topic to use. Required.</td>
             </tr>
             <tr>
+              <td>key</td>
+              <td>String</td>
+              <td>The key that will be sent to Kafka with every message. Optional value defaulting to <code>null</code>.
+                Any of the <a href="./lookups.html">Lookups</a>) can be included.
+              </td>
+            </tr>
+            <tr>
               <td>filter</td>
               <td>Filter</td>
               <td>A Filter to determine if the event should be handled by this Appender. More than one Filter
@@ -1744,9 +2027,8 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               <td>layout</td>
               <td>Layout</td>
               <td>
-                The Layout to use to format the LogEvent. If you do not specify a layout, the appender will send the
-                <a class="javadoc" href="http://logging.apache.org/log4j/2.x/log4j-api/apidocs/org/apache/logging/log4j/message/Message.html#getFormattedMessage())">formatted message</a>
-                to Kafka as a UTF-8 encoded string.
+                The Layout to use to format the LogEvent. Required, there is no default.
+                <em>New since 2.9, in previous versions &lt;PatternLayout pattern="%m"/&gt; was default.</em>
               </td>
             </tr>
             <tr>
@@ -1778,7 +2060,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               <td>
                 You can set properties in <a href="http://kafka.apache.org/documentation.html#producerconfigs">Kafka producer properties</a>.
                 You need to set the <code>bootstrap.servers</code> property, there are sensible default values for the others.
-                Do not set the <code>value.serializer</code> property.
+                Do not set the <code>value.serializer</code> nor <code>key.serializer</code> properties.
               </td>
             </tr>
           </table>
@@ -1951,9 +2233,11 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
       </subsection>
         <a name="NoSQLAppender"/>
         <subsection name="NoSQLAppender">
-          <p>The NoSQLAppender writes log events to a NoSQL database using an internal lightweight provider interface.
+          <p>
+            The NoSQLAppender writes log events to a NoSQL database using an internal lightweight provider interface.
             Provider implementations currently exist for MongoDB and Apache CouchDB, and writing a custom provider is
-            quite simple.</p>
+            quite simple.
+          </p>
           <table>
             <caption align="top">NoSQLAppender Parameters</caption>
             <tr>
@@ -1997,9 +2281,88 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
             <code>&lt;CouchDb&gt;</code>. To create your own custom provider, read the JavaDoc for the
             <code>NoSQLProvider</code>, <code>NoSQLConnection</code>, and <code>NoSQLObject</code> classes and the
             documentation about creating Log4j plugins. We recommend you review the source code for the MongoDB and
-            CouchDB providers as a guide for creating your own provider.</p>
+            CouchDB providers as a guide for creating your own provider.
+          </p>
+          <p>
+            The following example demonstrates how log events are persisted in NoSQL databases if represented in a JSON
+            format:
+          </p>
+            <pre class="prettyprint lang-javascript"><![CDATA[{
+    "level": "WARN",
+    "loggerName": "com.example.application.MyClass",
+    "message": "Something happened that you might want to know about.",
+    "source": {
+        "className": "com.example.application.MyClass",
+        "methodName": "exampleMethod",
+        "fileName": "MyClass.java",
+        "lineNumber": 81
+    },
+    "marker": {
+        "name": "SomeMarker",
+        "parent" {
+            "name": "SomeParentMarker"
+        }
+    },
+    "threadName": "Thread-1",
+    "millis": 1368844166761,
+    "date": "2013-05-18T02:29:26.761Z",
+    "thrown": {
+        "type": "java.sql.SQLException",
+        "message": "Could not insert record. Connection lost.",
+        "stackTrace": [
+                { "className": "org.example.sql.driver.PreparedStatement$1", "methodName": "responder", "fileName": "PreparedStatement.java", "lineNumber": 1049 },
+                { "className": "org.example.sql.driver.PreparedStatement", "methodName": "executeUpdate", "fileName": "PreparedStatement.java", "lineNumber": 738 },
+                { "className": "com.example.application.MyClass", "methodName": "exampleMethod", "fileName": "MyClass.java", "lineNumber": 81 },
+                { "className": "com.example.application.MainClass", "methodName": "main", "fileName": "MainClass.java", "lineNumber": 52 }
+        ],
+        "cause": {
+            "type": "java.io.IOException",
+            "message": "Connection lost.",
+            "stackTrace": [
+                { "className": "java.nio.channels.SocketChannel", "methodName": "write", "fileName": null, "lineNumber": -1 },
+                { "className": "org.example.sql.driver.PreparedStatement$1", "methodName": "responder", "fileName": "PreparedStatement.java", "lineNumber": 1032 },
+                { "className": "org.example.sql.driver.PreparedStatement", "methodName": "executeUpdate", "fileName": "PreparedStatement.java", "lineNumber": 738 },
+                { "className": "com.example.application.MyClass", "methodName": "exampleMethod", "fileName": "MyClass.java", "lineNumber": 81 },
+                { "className": "com.example.application.MainClass", "methodName": "main", "fileName": "MainClass.java", "lineNumber": 52 }
+            ]
+        }
+    },
+    "contextMap": {
+        "ID": "86c3a497-4e67-4eed-9d6a-2e5797324d7b",
+        "username": "JohnDoe"
+    },
+    "contextStack": [
+        "topItem",
+        "anotherItem",
+        "bottomItem"
+    ]
+}]]></pre>
+        </subsection>
+        <a name="NoSQLAppenderMongoDB"/>
+        <subsection name="NoSQLAppender for MongoDB">
+          <p>
+            Starting with Log4 2.11.0, we provide two MongoDB modules:
+          </p>
+          <ul>
+            <li><code>log4j-mongodb2</code> defines the configuration element <a href="#NoSQLAppenderMongoDB2"><code>MongoDb2</code></a> matching the MongoDB Driver version 2.</li>
+            <li><code>log4j-mongodb3</code> defines the configuration element <a href="#NoSQLAppenderMongoDB3"><code>MongoDb3</code></a> matching the MongoDB Driver version 3.</li>
+          </ul>
+          <p>
+            We no longer provide the module <code>log4j-mongodb</code>.
+          </p>
+          <p>
+            The module <code>log4j-mongodb2</code> aliases the old configuration element <code>MongoDb</code> to <a href="#NoSQLAppenderMongoDB2"><code>MongoDb2</code></a>.
+          </p>
+        </subsection>
+        <a name="NoSQLAppenderMongoDB2"/>
+        <subsection name="NoSQLAppender for MongoDB 2">
+          <p>
+            This section details specializations of the <a href="#NoSQLAppender">NoSQLAppender</a> provider for MongoDB using
+            the MongoDB driver version 2. The NoSQLAppender Appender writes log events to a NoSQL database using an 
+            internal lightweight provider interface.
+          </p>
           <table>
-            <caption align="top">MongoDB Provider Parameters</caption>
+            <caption align="top">MongoDB2 Provider Parameters</caption>
             <tr>
               <th>Parameter Name</th>
               <th>Type</th>
@@ -2081,6 +2444,180 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               linked above for more information.</td>
             </tr>
           </table>
+          <p>
+            This appender is <a href="messages.html#MapMessage">MapMessage</a>-aware.
+          </p>
+          <p>
+            Here are a few sample configurations for the NoSQLAppender and MongoDB2 provider:
+          </p>
+
+            <pre class="prettyprint linenums lang-xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="error">
+  <Appenders>
+    <NoSql name="databaseAppender">
+      <MongoDb2 databaseName="applicationDb" collectionName="applicationLog" server="mongo.example.org"
+               username="loggingUser" password="abc123" />
+    </NoSql>
+  </Appenders>
+  <Loggers>
+    <Root level="warn">
+      <AppenderRef ref="databaseAppender"/>
+    </Root>
+  </Loggers>
+</Configuration>]]></pre>
+
+            <pre class="prettyprint linenums lang-xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="error">
+  <Appenders>
+    <NoSql name="databaseAppender">
+      <MongoDb2 collectionName="applicationLog" factoryClassName="org.example.db.ConnectionFactory"
+               factoryMethodName="getNewMongoClient" />
+    </NoSql>
+  </Appenders>
+  <Loggers>
+    <Root level="warn">
+      <AppenderRef ref="databaseAppender"/>
+    </Root>
+  </Loggers>
+</Configuration>]]></pre>
+        <p>
+          Starting in Log4j version 2.11.0, the provider element name is <code>MongoDb2</code>. 
+          The name <code>MongoDb</code> is now a deprecated alias for <code>MongoDb2</code>.
+        </p>
+        </subsection>
+        <a name="NoSQLAppenderMongoDB3"/>
+        <subsection name="NoSQLAppender for MongoDB 3">
+          <p>
+            This section details specializations of the <a href="#NoSQLAppender">NoSQLAppender</a> provider for MongoDB using
+            the MongoDB driver version 3. The NoSQLAppender Appender writes log events to a NoSQL database using an 
+            internal lightweight provider interface.
+          </p>
+          <table>
+            <caption align="top">MongoDB3 Provider Parameters</caption>
+            <tr>
+              <th>Parameter Name</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>collectionName</td>
+              <td>String</td>
+              <td><em>Required.</em> The name of the MongoDB collection to insert the events into.</td>
+            </tr>
+            <tr>
+              <td>writeConcernConstant</td>
+              <td>Field</td>
+              <td>By default, the MongoDB provider inserts records with the instructions
+                <code>com.mongodb.WriteConcern.ACKNOWLEDGED</code>. Use this optional attribute to specify the name of
+                a constant other than <code>ACKNOWLEDGED</code>.</td>
+            </tr>
+            <tr>
+              <td>writeConcernConstantClass</td>
+              <td>Class</td>
+              <td>If you specify <code>writeConcernConstant</code>, you can use this attribute to specify a class other
+                than <code>com.mongodb.WriteConcern</code> to find the constant on (to create your own custom
+                instructions).</td>
+            </tr>
+            <tr>
+              <td>factoryClassName</td>
+              <td>Class</td>
+              <td>To provide a connection to the MongoDB database, you can use this attribute and
+                <code>factoryMethodName</code> to specify a class and static method to get the connection from. The
+                method must return a <code>com.mongodb.client.MongoDatabase</code> or a <code>com.mongodb.MongoClient</code>. If the
+                <code>com.mongodb.client.MongoDatabase</code> is not authenticated, you must also specify a <code>username</code> and
+                <code>password</code>. If you use the factory method for providing a connection, you must not specify
+                the <code>databaseName</code>, <code>server</code>, or <code>port</code> attributes.</td>
+            </tr>
+            <tr>
+              <td>factoryMethodName</td>
+              <td>Method</td>
+              <td>See the documentation for attribute <code>factoryClassName</code>.</td>
+            </tr>
+            <tr>
+              <td>databaseName</td>
+              <td>String</td>
+              <td>If you do not specify a <code>factoryClassName</code> and <code>factoryMethodName</code> for providing
+                a MongoDB connection, you must specify a MongoDB database name using this attribute. You must also
+                specify a <code>username</code> and <code>password</code>. You can optionally also specify a
+                <code>server</code> (defaults to localhost), and a <code>port</code> (defaults to the default MongoDB
+                port).</td>
+            </tr>
+            <tr>
+              <td>server</td>
+              <td>String</td>
+              <td>See the documentation for attribute <code>databaseName</code>.</td>
+            </tr>
+            <tr>
+              <td>port</td>
+              <td>int</td>
+              <td>See the documentation for attribute <code>databaseName</code>.</td>
+            </tr>
+            <tr>
+              <td>username</td>
+              <td>String</td>
+              <td>See the documentation for attributes <code>databaseName</code> and <code>factoryClassName</code>.</td>
+            </tr>
+            <tr>
+              <td>password</td>
+              <td>String</td>
+              <td>See the documentation for attributes <code>databaseName</code> and <code>factoryClassName</code>.</td>
+            </tr>
+            <tr>
+              <td>capped</td>
+              <td>boolean</td>
+              <td>Enable support for <a href="https://docs.mongodb.com/manual/core/capped-collections/">capped collections</a></td>
+            </tr>
+            <tr>
+              <td>collectionSize</td>
+              <td>int</td>
+              <td>Specify the size in bytes of the capped collection to use if enabled. The minimum size is 4096 bytes,
+              and larger sizes will be increased to the nearest integer multiple of 256. See the capped collection documentation
+              linked above for more information.</td>
+            </tr>
+          </table>
+          <p>
+            This appender is <a href="messages.html#MapMessage">MapMessage</a>-aware.
+          </p>
+          <p>
+            Here are a few sample configurations for the NoSQLAppender and MongoDB3 provider:
+          </p>
+
+            <pre class="prettyprint linenums lang-xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="error">
+  <Appenders>
+    <NoSql name="databaseAppender">
+      <MongoDb3 databaseName="applicationDb" collectionName="applicationLog" server="mongo.example.org"
+               username="loggingUser" password="abc123" />
+    </NoSql>
+  </Appenders>
+  <Loggers>
+    <Root level="warn">
+      <AppenderRef ref="databaseAppender"/>
+    </Root>
+  </Loggers>
+</Configuration>]]></pre>
+
+            <pre class="prettyprint linenums lang-xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="error">
+  <Appenders>
+    <NoSql name="databaseAppender">
+      <MongoDb3 collectionName="applicationLog" factoryClassName="org.example.db.ConnectionFactory"
+               factoryMethodName="getNewMongoClient" />
+    </NoSql>
+  </Appenders>
+  <Loggers>
+    <Root level="warn">
+      <AppenderRef ref="databaseAppender"/>
+    </Root>
+  </Loggers>
+</Configuration>]]></pre>
+        </subsection>
+        <a name="NoSQLAppenderApacheCouchDB"/>
+        <subsection name="NoSQLAppender for Apache CouchDB">
+          <p>
+            This section details specializations of the <a href="#NoSQLAppender">NoSQLAppender</a> provider for CouchDB.
+            The NoSQLAppender writes log events to a NoSQL database using an internal lightweight provider interface.
+          </p>
           <table>
             <caption align="top">CouchDB Provider Parameters</caption>
             <tr>
@@ -2139,38 +2676,8 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
             </tr>
           </table>
           <p>
-            Here are a few sample configurations for the NoSQLAppender:
+            Here are a few sample configurations for the NoSQLAppender and CouchDB provider:
           </p>
-
-            <pre class="prettyprint linenums lang-xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="error">
-  <Appenders>
-    <NoSql name="databaseAppender">
-      <MongoDb databaseName="applicationDb" collectionName="applicationLog" server="mongo.example.org"
-               username="loggingUser" password="abc123" />
-    </NoSql>
-  </Appenders>
-  <Loggers>
-    <Root level="warn">
-      <AppenderRef ref="databaseAppender"/>
-    </Root>
-  </Loggers>
-</Configuration>]]></pre>
-
-            <pre class="prettyprint linenums lang-xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
-<Configuration status="error">
-  <Appenders>
-    <NoSql name="databaseAppender">
-      <MongoDb collectionName="applicationLog" factoryClassName="org.example.db.ConnectionFactory"
-               factoryMethodName="getNewMongoClient" />
-    </NoSql>
-  </Appenders>
-  <Loggers>
-    <Root level="warn">
-      <AppenderRef ref="databaseAppender"/>
-    </Root>
-  </Loggers>
-</Configuration>]]></pre>
 
             <pre class="prettyprint linenums lang-xml"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="error">
@@ -2186,60 +2693,6 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
     </Root>
   </Loggers>
 </Configuration>]]></pre>
-          <p>
-            The following example demonstrates how log events are persisted in NoSQL databases if represented in a JSON
-            format:
-          </p>
-            <pre class="prettyprint lang-javascript"><![CDATA[{
-    "level": "WARN",
-    "loggerName": "com.example.application.MyClass",
-    "message": "Something happened that you might want to know about.",
-    "source": {
-        "className": "com.example.application.MyClass",
-        "methodName": "exampleMethod",
-        "fileName": "MyClass.java",
-        "lineNumber": 81
-    },
-    "marker": {
-        "name": "SomeMarker",
-        "parent" {
-            "name": "SomeParentMarker"
-        }
-    },
-    "threadName": "Thread-1",
-    "millis": 1368844166761,
-    "date": "2013-05-18T02:29:26.761Z",
-    "thrown": {
-        "type": "java.sql.SQLException",
-        "message": "Could not insert record. Connection lost.",
-        "stackTrace": [
-                { "className": "org.example.sql.driver.PreparedStatement$1", "methodName": "responder", "fileName": "PreparedStatement.java", "lineNumber": 1049 },
-                { "className": "org.example.sql.driver.PreparedStatement", "methodName": "executeUpdate", "fileName": "PreparedStatement.java", "lineNumber": 738 },
-                { "className": "com.example.application.MyClass", "methodName": "exampleMethod", "fileName": "MyClass.java", "lineNumber": 81 },
-                { "className": "com.example.application.MainClass", "methodName": "main", "fileName": "MainClass.java", "lineNumber": 52 }
-        ],
-        "cause": {
-            "type": "java.io.IOException",
-            "message": "Connection lost.",
-            "stackTrace": [
-                { "className": "java.nio.channels.SocketChannel", "methodName": "write", "fileName": null, "lineNumber": -1 },
-                { "className": "org.example.sql.driver.PreparedStatement$1", "methodName": "responder", "fileName": "PreparedStatement.java", "lineNumber": 1032 },
-                { "className": "org.example.sql.driver.PreparedStatement", "methodName": "executeUpdate", "fileName": "PreparedStatement.java", "lineNumber": 738 },
-                { "className": "com.example.application.MyClass", "methodName": "exampleMethod", "fileName": "MyClass.java", "lineNumber": 81 },
-                { "className": "com.example.application.MainClass", "methodName": "main", "fileName": "MainClass.java", "lineNumber": 52 }
-            ]
-        }
-    },
-    "contextMap": {
-        "ID": "86c3a497-4e67-4eed-9d6a-2e5797324d7b",
-        "username": "JohnDoe"
-    },
-    "contextStack": [
-        "topItem",
-        "anotherItem",
-        "bottomItem"
-    ]
-}]]></pre>
         </subsection>
         <a name="OutputStreamAppender"/>
         <subsection name="OutputStreamAppender">
@@ -2526,7 +2979,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               <th>Description</th>
             </tr>
             <tr>
-              <td>loggerName</td>
+              <td>logger</td>
               <td>String</td>
               <td>A logger name used as a prefix to test each event's logger name.</td>
             </tr>
@@ -2548,7 +3001,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
     </Console>
     <Rewrite name="rewrite">
       <AppenderRef ref="STDOUT"/>
-      <LoggerNameLevelRewritePolicy loggerName="com.foo.bar">
+      <LoggerNameLevelRewritePolicy logger="com.foo.bar">
         <KeyValuePair key="INFO" value="DEBUG"/>
         <KeyValuePair key="WARN" value="INFO"/>
       </LoggerNameLevelRewritePolicy>
@@ -3644,7 +4097,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
       <CronTriggeringPolicy schedule="0 0 0 * * ?"/>
       <DefaultRolloverStrategy stopCustomActionsOnError="true">
         <PosixViewAttribute basePath="${baseDir}/$${date:yyyy-MM}" filePermissions="r--r--r--">
-        	<IfFileName glob="*.gz" /> 
+        	<IfFileName glob="*.gz" />
         </PosixViewAttribute>
       </DefaultRolloverStrategy>
     </RollingFile>
@@ -4218,26 +4671,9 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               <th>Description</th>
             </tr>
             <tr>
-              <td>bcc</td>
+              <td>name</td>
               <td>String</td>
-              <td>The comma-separated list of BCC email addresses.</td>
-            </tr>
-            <tr>
-              <td>cc</td>
-              <td>String</td>
-              <td>The comma-separated list of CC email addresses.</td>
-            </tr>
-            <tr>
-              <td>bufferSize</td>
-              <td>integer</td>
-              <td>The maximum number of log events to be buffered for inclusion in the message. Defaults to 512.</td>
-            </tr>
-            <tr>
-              <td>filter</td>
-              <td>Filter</td>
-              <td>A Filter to determine if the event should be handled by this Appender. More than one Filter
-                may be used by using a CompositeFilter.
-              </td>
+              <td>The name of the Appender.</td>
             </tr>
             <tr>
               <td>from</td>
@@ -4245,19 +4681,46 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
               <td>The email address of the sender.</td>
             </tr>
             <tr>
+              <td>replyTo</td>
+              <td>String</td>
+              <td>The comma-separated list of reply-to email addresses.</td>
+            </tr>
+            <tr>
+              <td>to</td>
+              <td>String</td>
+              <td>The comma-separated list of recipient email addresses.</td>
+            </tr>
+            <tr>
+              <td>cc</td>
+              <td>String</td>
+              <td>The comma-separated list of CC email addresses.</td>
+            </tr>
+            <tr>
+              <td>bcc</td>
+              <td>String</td>
+              <td>The comma-separated list of BCC email addresses.</td>
+            </tr>
+            <tr>
+              <td>subject</td>
+              <td>String</td>
+              <td>The subject of the email message.</td>
+            </tr>
+            <tr>
+              <td>bufferSize</td>
+              <td>integer</td>
+              <td>The maximum number of log events to be buffered for inclusion in the message. Defaults to 512.</td>
+            </tr>
+            <tr>
               <td>layout</td>
               <td>Layout</td>
               <td>The Layout to use to format the LogEvent. If no layout is supplied <a href="layouts.html#HTMLLayout">HTML layout</a> will be used.</td>
             </tr>
             <tr>
-              <td>name</td>
-              <td>String</td>
-              <td>The name of the Appender.</td>
-            </tr>
-            <tr>
-              <td>replyTo</td>
-              <td>String</td>
-              <td>The comma-separated list of reply-to email addresses.</td>
+              <td>filter</td>
+              <td>Filter</td>
+              <td>A Filter to determine if the event should be handled by this Appender. More than one Filter
+                may be used by using a CompositeFilter.
+              </td>
             </tr>
             <tr>
               <td>smtpDebug</td>
@@ -4296,11 +4759,6 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
                 internally logged and then ignored. When set to <code>false</code> exceptions will be propagated to the
                 caller, instead. You must set this to <code>false</code> when wrapping this Appender in a
                 <a href="#FailoverAppender">FailoverAppender</a>.</td>
-            </tr>
-            <tr>
-              <td>to</td>
-              <td>String</td>
-              <td>The comma-separated list of recipient email addresses.</td>
             </tr>
           </table>
           <pre class="prettyprint linenums"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
@@ -4356,7 +4814,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
           <p>
             The <code>SocketAppender</code> is an OutputStreamAppender that writes its output to a remote destination
             specified by a host and port. The data can be sent over either TCP or UDP and can be sent in any format.
-            You can optionally secure communication with SSL.
+            You can optionally secure communication with <a href="#SSL">SSL</a>.
           </p>
           <table>
             <caption align="top"><code>SocketAppender</code> Parameters</caption>
@@ -4388,7 +4846,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
             <tr>
               <td>SSL</td>
               <td>SslConfiguration</td>
-              <td>Contains the configuration for the KeyStore and TrustStore.</td>
+              <td>Contains the configuration for the KeyStore and TrustStore. See <a href="#SSL">SSL</a>.</td>
             </tr>
             <tr>
               <td>filter</td>
@@ -4468,7 +4926,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
 </Configuration>]]></pre>
 
           <p>
-            This is a secured SSL configuration:
+            This is a secured <a href="#SSL">SSL</a> configuration:
           </p>
           <pre class="prettyprint linenums"><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="warn" name="MyApp" packages="">
@@ -4476,8 +4934,8 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
     <Socket name="socket" host="localhost" port="9500">
       <JsonLayout properties="true"/>
       <SSL>
-        <KeyStore location="log4j2-keystore.jks" password="changeme"/>
-        <TrustStore location="truststore.jks" password="changeme"/>
+        <KeyStore   location="log4j2-keystore.jks" passwordEnvironmentVariable="KEYSTORE_PASSWORD"/>
+        <TrustStore location="truststore.jks"      passwordFile="${sys:user.home}/truststore.pwd"/>
       </SSL>
     </Socket>
   </Appenders>
@@ -4487,6 +4945,156 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
     </Root>
   </Loggers>
 </Configuration>]]></pre>
+
+        </subsection>
+        <a name="SSL" />
+        <subsection name="SSL Configuration">
+          <p>
+            Several appenders can be configured to use either a plain network connection or a Secure Socket Layer (SSL)
+            connection. This section documents the parameters available for SSL configuration.
+          </p>
+          <table>
+          <caption align="top">SSL Configuration Parameters</caption>
+          <tr>
+            <th>Parameter Name</th>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+          <tr>
+            <td>protocol</td>
+            <td>String</td>
+            <td><code>SSL</code> if omitted.
+            See also <a href="http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#SSLContext">Standard names</a>.</td>
+          </tr>
+          <tr>
+            <td>KeyStore</td>
+            <td>KeyStore</td>
+            <td>Contains your private keys and certificates,
+              and determines which authentication credentials to send to the remote host.</td>
+          </tr>
+          <tr>
+            <td>TrustStore</td>
+            <td>TrustStore</td>
+            <td>Contains the CA certificates of the remote counterparty.
+              Determines whether the remote authentication credentials
+              (and thus the connection) should be trusted.</td>
+          </tr>
+          </table>
+
+          <h4>KeyStore</h4>
+          <p>
+            The keystore is meant to contain your private keys and certificates,
+            and determines which authentication credentials to send to the remote host.
+          </p>
+
+          <table>
+            <caption align="top">KeyStore Configuration Parameters</caption>
+            <tr>
+              <th>Parameter Name</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>location</td>
+              <td>String</td>
+              <td>Path to the keystore file.</td>
+            </tr>
+            <tr>
+              <td>password</td>
+              <td>char[]</td>
+              <td>Plain text password to access the keystore. Cannot be combined with either
+                <code>passwordEnvironmentVariable</code> or <code>passwordFile</code>.</td>
+            </tr>
+            <tr>
+              <td>passwordEnvironmentVariable</td>
+              <td>String</td>
+              <td>Name of an environment variable that holds the password. Cannot be combined with either
+                <code>password</code> or <code>passwordFile</code>.</td>
+            </tr>
+            <tr>
+              <td>passwordFile</td>
+              <td>String</td>
+              <td>Path to a file that holds the password. Cannot be combined with either
+                <code>password</code> or <code>passwordEnvironmentVariable</code>.</td>
+            </tr>
+            <tr>
+              <td>type</td>
+              <td>String</td>
+              <td>Optional KeyStore type, e.g. <code>JKS</code>, <code>PKCS12</code>, <code>PKCS11</code>,
+                <code>BKS</code>, <code>Windows-MY/Windows-ROOT</code>, <code>KeychainStore</code>, etc.
+                The default is JKS. See also <a href="http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#KeyStore">Standard types</a>.</td>
+            </tr>
+            <tr>
+              <td>keyManagerFactoryAlgorithm</td>
+              <td>String</td>
+              <td>Optional KeyManagerFactory algorithm. The default is <code>SunX509</code>.
+              See also <a href="http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#KeyManagerFactory">Standard algorithms</a>.</td>
+            </tr>
+          </table>
+
+          <h4>TrustStore</h4>
+          <p>
+            The trust store is meant to contain the CA certificates you are willing to trust
+            when a remote party presents its certificate. Determines whether the remote authentication credentials
+            (and thus the connection) should be trusted.
+          </p><p>
+          In some cases, they can be one and the same store,
+          although it is often better practice to use distinct stores (especially when they are file-based).
+          </p>
+
+          <table>
+            <caption align="top">TrustStore Configuration Parameters</caption>
+            <tr>
+              <th>Parameter Name</th>
+              <th>Type</th>
+              <th>Description</th>
+            </tr>
+            <tr>
+              <td>location</td>
+              <td>String</td>
+              <td>Path to the keystore file.</td>
+            </tr>
+            <tr>
+              <td>password</td>
+              <td>char[]</td>
+              <td>Plain text password to access the keystore. Cannot be combined with either
+                <code>passwordEnvironmentVariable</code> or <code>passwordFile</code>.</td>
+            </tr>
+            <tr>
+              <td>passwordEnvironmentVariable</td>
+              <td>String</td>
+              <td>Name of an environment variable that holds the password. Cannot be combined with either
+                <code>password</code> or <code>passwordFile</code>.</td>
+            </tr>
+            <tr>
+              <td>passwordFile</td>
+              <td>String</td>
+              <td>Path to a file that holds the password. Cannot be combined with either
+                <code>password</code> or <code>passwordEnvironmentVariable</code>.</td>
+            </tr>
+            <tr>
+              <td>type</td>
+              <td>String</td>
+              <td>Optional KeyStore type, e.g. <code>JKS</code>, <code>PKCS12</code>, <code>PKCS11</code>,
+                <code>BKS</code>, <code>Windows-MY/Windows-ROOT</code>, <code>KeychainStore</code>, etc.
+                The default is JKS. See also <a href="http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#KeyStore">Standard types</a>.</td>
+            </tr>
+            <tr>
+              <td>trustManagerFactoryAlgorithm</td>
+              <td>String</td>
+              <td>Optional TrustManagerFactory algorithm. The default is <code>SunX509</code>.
+                See also <a href="http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#TrustManagerFactory">Standard algorithms</a>.</td>
+            </tr>
+          </table>
+
+          <h4>Example</h4>
+          <pre class="prettyprint linenums"><![CDATA[
+  ...
+      <SSL>
+        <KeyStore   location="log4j2-keystore.jks" passwordEnvironmentVariable="KEYSTORE_PASSWORD"/>
+        <TrustStore location="truststore.jks"      passwordFile="${sys:user.home}/truststore.pwd"/>
+      </SSL>
+  ...]]></pre>
 
         </subsection>
         <a name="SyslogAppender"/>
@@ -4660,7 +5268,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
             <tr>
               <td>SSL</td>
               <td>SslConfiguration</td>
-              <td>Contains the configuration for the KeyStore and TrustStore.</td>
+              <td>Contains the configuration for the KeyStore and TrustStore. See <a href="#SSL">SSL</a>.</td>
             </tr>
             <tr>
               <td>reconnectionDelayMillis</td>
@@ -4696,7 +5304,7 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
 </Configuration>]]></pre>
 
           <p>
-            For SSL this appender writes its output to a remote destination specified by a host and port over SSL in
+            For <a href="#SSL">SSL</a> this appender writes its output to a remote destination specified by a host and port over SSL in
             a format that conforms with either the BSD Syslog format or the RFC 5424 format.
           </p>
 
@@ -4705,8 +5313,8 @@ public class JpaLogEntity extends AbstractLogEventWrapperEntity {
   <Appenders>
     <TLSSyslog name="bsd" host="localhost" port="6514">
       <SSL>
-        <KeyStore location="log4j2-keystore.jks" password="changeme"/>
-        <TrustStore location="truststore.jks" password="changeme"/>
+        <KeyStore   location="log4j2-keystore.jks" passwordEnvironmentVariable="KEYSTORE_PASSWORD"/>
+        <TrustStore location="truststore.jks"      passwordFile="${sys:user.home}/truststore.pwd"/>
       </SSL>
     </TLSSyslog>
   </Appenders>

@@ -24,6 +24,7 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.ThreadContext;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
+import org.apache.logging.log4j.core.time.Instant;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.util.ReadOnlyStringMap;
 
@@ -50,7 +51,7 @@ public interface LogEvent extends Serializable {
 
     /**
      * Returns an immutable version of this log event, which MAY BE a copy of this event.
-     *  
+     *
      * @return an immutable version of this log event
      */
     LogEvent toImmutable();
@@ -124,11 +125,25 @@ public interface LogEvent extends Serializable {
 
     /**
      * Gets event time in milliseconds since midnight, January 1, 1970 UTC.
+     * Use {@link #getInstant()} to get higher precision timestamp information if available on this platform.
      *
-     * @return milliseconds since midnight, January 1, 1970 UTC.
+     * @return the milliseconds component of this log event's {@linkplain #getInstant() timestamp}
      * @see java.lang.System#currentTimeMillis()
      */
     long getTimeMillis();
+
+    /**
+     * Returns the Instant when the message was logged.
+     * <p>
+     * <b>Caution</b>: if this {@code LogEvent} implementation is mutable and reused for multiple consecutive log messages,
+     * then the {@code Instant} object returned by this method is also mutable and reused.
+     * Client code should not keep a reference to the returned object but make a copy instead.
+     * </p>
+     *
+     * @return the {@code Instant} holding Instant details for this log event
+     * @since 2.11
+     */
+    Instant getInstant();
 
     /**
      * Gets the source of logging request.

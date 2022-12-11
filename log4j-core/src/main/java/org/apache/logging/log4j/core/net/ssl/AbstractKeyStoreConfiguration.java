@@ -16,13 +16,17 @@
  */
 package org.apache.logging.log4j.core.net.ssl;
 
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
+import java.util.Arrays;
+
+import org.apache.logging.log4j.core.config.ConfigurationSource;
+import org.apache.logging.log4j.core.util.NetUtils;
 
 /**
  * Configuration of the KeyStore
@@ -31,42 +35,72 @@ public class AbstractKeyStoreConfiguration extends StoreConfiguration<KeyStore> 
     private final KeyStore keyStore;
     private final String keyStoreType;
 
-    public AbstractKeyStoreConfiguration(final String location, final String password, final String keyStoreType)
+    public AbstractKeyStoreConfiguration(final String location, final PasswordProvider passwordProvider, final String keyStoreType)
             throws StoreConfigurationException {
-        super(location, password);
+        super(location, passwordProvider);
         this.keyStoreType = keyStoreType == null ? SslConfigurationDefaults.KEYSTORE_TYPE : keyStoreType;
         this.keyStore = this.load();
     }
 
+    /**
+     * @deprecated Use {@link #AbstractKeyStoreConfiguration(String, PasswordProvider, String)} instead
+     */
+    @Deprecated
+    public AbstractKeyStoreConfiguration(final String location, final char[] password, final String keyStoreType)
+            throws StoreConfigurationException {
+        this(location, new MemoryPasswordProvider(password), keyStoreType);
+    }
+
+    /**
+     * @deprecated Use {@link #AbstractKeyStoreConfiguration(String, PasswordProvider, String)} instead
+     */
+    @Deprecated
+    public AbstractKeyStoreConfiguration(final String location, final String password, final String keyStoreType)
+            throws StoreConfigurationException {
+        this(location, new MemoryPasswordProvider(password == null ? null : password.toCharArray()), keyStoreType);
+    }
+
     @Override
     protected KeyStore load() throws StoreConfigurationException {
-        LOGGER.debug("Loading keystore from file with params(location={})", this.getLocation());
+        final String loadLocation = this.getLocation();
+        LOGGER.debug("Loading keystore from location {}", loadLocation);
         try {
-            if (this.getLocation() == null) {
+            if (loadLocation == null) {
                 throw new IOException("The location is null");
             }
-            try (final FileInputStream fin = new FileInputStream(this.getLocation())) {
+            try (final InputStream fin = openInputStream(loadLocation)) {
                 final KeyStore ks = KeyStore.getInstance(this.keyStoreType);
-                ks.load(fin, this.getPasswordAsCharArray());
-                LOGGER.debug("Keystore successfully loaded with params(location={})", this.getLocation());
+                final char[] password = this.getPasswordAsCharArray();
+                try {
+                    ks.load(fin, password);
+                } finally {
+                    if (password != null) {
+                        Arrays.fill(password, '\0');
+                    }
+                }
+                LOGGER.debug("KeyStore successfully loaded from location {}", loadLocation);
                 return ks;
             }
         } catch (final CertificateException e) {
-            LOGGER.error("No Provider supports a KeyStoreSpi implementation for the specified type" + this.keyStoreType, e);
-            throw new StoreConfigurationException(e);
+            LOGGER.error("No Provider supports a KeyStoreSpi implementation for the specified type {} for location {}", this.keyStoreType, loadLocation, e);
+            throw new StoreConfigurationException(loadLocation, e);
         } catch (final NoSuchAlgorithmException e) {
-            LOGGER.error("The algorithm used to check the integrity of the keystore cannot be found", e);
-            throw new StoreConfigurationException(e);
+            LOGGER.error("The algorithm used to check the integrity of the keystore cannot be found for location {}", loadLocation, e);
+            throw new StoreConfigurationException(loadLocation, e);
         } catch (final KeyStoreException e) {
-            LOGGER.error(e);
-            throw new StoreConfigurationException(e);
+            LOGGER.error("KeyStoreException for location {}", loadLocation, e);
+            throw new StoreConfigurationException(loadLocation, e);
         } catch (final FileNotFoundException e) {
-            LOGGER.error("The keystore file(" + this.getLocation() + ") is not found", e);
-            throw new StoreConfigurationException(e);
+            LOGGER.error("The keystore file {} is not found", loadLocation, e);
+            throw new StoreConfigurationException(loadLocation, e);
         } catch (final IOException e) {
-            LOGGER.error("Something is wrong with the format of the keystore or the given password", e);
-            throw new StoreConfigurationException(e);
+            LOGGER.error("Something is wrong with the format of the keystore or the given password for location", loadLocation, e);
+            throw new StoreConfigurationException(loadLocation, e);
         }
+    }
+
+    private InputStream openInputStream(final String filePathOrUri) {
+        return ConfigurationSource.fromUri(NetUtils.toURI(filePathOrUri)).getInputStream();
     }
 
     public KeyStore getKeyStore() {

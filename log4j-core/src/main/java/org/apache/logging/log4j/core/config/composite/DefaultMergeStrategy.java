@@ -19,6 +19,7 @@ package org.apache.logging.log4j.core.config.composite;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.Filter;
@@ -136,7 +137,7 @@ public class DefaultMergeStrategy implements MergeStrategy {
                     case APPENDERS: {
                         for (final Node node : sourceChildNode.getChildren()) {
                             for (final Node targetNode : targetChildNode.getChildren()) {
-                                if (targetNode.getAttributes().get(NAME).equals(node.getAttributes().get(NAME))) {
+                                if (Objects.equals(targetNode.getAttributes().get(NAME), node.getAttributes().get(NAME))) {
                                     targetChildNode.getChildren().remove(targetNode);
                                     break;
                                 }
@@ -170,6 +171,8 @@ public class DefaultMergeStrategy implements MergeStrategy {
                                         if (!foundFilter) {
                                             final Node childNode = new Node(loggerNode, sourceLoggerChild.getName(),
                                                     sourceLoggerChild.getType());
+                                            childNode.getAttributes().putAll(sourceLoggerChild.getAttributes());
+                                            childNode.getChildren().addAll(sourceLoggerChild.getChildren());
                                             targetNode.getChildren().add(childNode);
                                         }
                                     } else {

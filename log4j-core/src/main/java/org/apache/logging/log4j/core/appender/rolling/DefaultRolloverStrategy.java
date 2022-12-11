@@ -90,10 +90,10 @@ public class DefaultRolloverStrategy extends AbstractRolloverStrategy {
     public static class Builder implements org.apache.logging.log4j.core.util.Builder<DefaultRolloverStrategy> {
         @PluginBuilderAttribute("max")
         private String max;
-        
+
         @PluginBuilderAttribute("min")
         private String min;
-        
+
         @PluginBuilderAttribute("fileIndex")
         private String fileIndex;
 
@@ -142,7 +142,9 @@ public class DefaultRolloverStrategy extends AbstractRolloverStrategy {
                 }
             }
             final int compressionLevel = Integers.parseInt(compressionLevelStr, Deflater.DEFAULT_COMPRESSION);
-            return new DefaultRolloverStrategy(minIndex, maxIndex, useMax, compressionLevel, config.getStrSubstitutor(),
+            // The config object can be null when this object is built programmatically.
+            final StrSubstitutor nonNullStrSubstitutor = config != null ? config.getStrSubstitutor() : new StrSubstitutor();
+			return new DefaultRolloverStrategy(minIndex, maxIndex, useMax, compressionLevel, nonNullStrSubstitutor,
                     customActions, stopCustomActionsOnError, tempCompressedFilePattern);
         }
 
@@ -258,7 +260,7 @@ public class DefaultRolloverStrategy extends AbstractRolloverStrategy {
 
         /**
          * Defines configuration.
-         * 
+         *
          * @param config The Configuration.
          * @return This builder for chaining convenience
          */
@@ -549,8 +551,9 @@ public class DefaultRolloverStrategy extends AbstractRolloverStrategy {
                 tempCompressedFilePattern.formatFileName(strSubstitutor, buf, fileIndex);
                 final String tmpCompressedName = buf.toString();
                 final File tmpCompressedNameFile = new File(tmpCompressedName);
-                if (tmpCompressedNameFile.getParentFile() != null) {
-                    tmpCompressedNameFile.getParentFile().mkdirs();
+                final File parentFile = tmpCompressedNameFile.getParentFile();
+                if (parentFile != null) {
+                    parentFile.mkdirs();
                 }
                 compressAction = new CompositeAction(
                         Arrays.asList(fileExtension.createCompressAction(renameTo, tmpCompressedName,

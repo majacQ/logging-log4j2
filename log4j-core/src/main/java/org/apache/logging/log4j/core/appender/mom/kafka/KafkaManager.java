@@ -17,6 +17,7 @@
 
 package org.apache.logging.log4j.core.appender.mom.kafka;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -47,9 +48,11 @@ public class KafkaManager extends AbstractManager {
     private final int timeoutMillis;
 
     private final String topic;
+    private final String key;
     private final boolean syncSend;
 
-    public KafkaManager(final LoggerContext loggerContext, final String name, final String topic, final boolean syncSend, final Property[] properties) {
+    public KafkaManager(final LoggerContext loggerContext, final String name, final String topic, final boolean syncSend,
+                        final Property[] properties, final String key) {
         super(loggerContext, name);
         this.topic = Objects.requireNonNull(topic, "topic");
         this.syncSend = syncSend;
@@ -59,6 +62,9 @@ public class KafkaManager extends AbstractManager {
         for (final Property property : properties) {
             config.setProperty(property.getName(), property.getValue());
         }
+
+        this.key = key;
+
         this.timeoutMillis = Integer.parseInt(config.getProperty("timeout.ms", DEFAULT_TIMEOUT_MILLIS));
     }
 
@@ -96,7 +102,15 @@ public class KafkaManager extends AbstractManager {
 
     public void send(final byte[] msg) throws ExecutionException, InterruptedException, TimeoutException {
         if (producer != null) {
-            final ProducerRecord<byte[], byte[]> newRecord = new ProducerRecord<>(topic, msg);
+            byte[] newKey = null;
+
+            if(key != null && key.contains("${")) {
+                newKey = getLoggerContext().getConfiguration().getStrSubstitutor().replace(key).getBytes(StandardCharsets.UTF_8);
+            } else if (key != null) {
+                newKey = key.getBytes(StandardCharsets.UTF_8);
+            }
+
+            final ProducerRecord<byte[], byte[]> newRecord = new ProducerRecord<>(topic, newKey, msg);
             if (syncSend) {
                 final Future<RecordMetadata> response = producer.send(newRecord);
                 response.get(timeoutMillis, TimeUnit.MILLISECONDS);

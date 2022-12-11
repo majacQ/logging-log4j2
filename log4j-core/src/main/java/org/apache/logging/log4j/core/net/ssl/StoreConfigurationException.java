@@ -29,4 +29,8 @@ public class StoreConfigurationException extends Exception {
     public StoreConfigurationException(final String message) {
         super(message);
     }
+
+    public StoreConfigurationException(final String message, final Exception e) {
+        super(message, e);
+    }
 }

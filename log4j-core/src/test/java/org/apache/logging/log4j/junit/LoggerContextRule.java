@@ -23,6 +23,7 @@ import org.apache.logging.log4j.core.AbstractLifeCycle;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.LoggerContextAccessor;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.apache.logging.log4j.core.selector.ContextSelector;
@@ -42,12 +43,12 @@ import static org.junit.Assert.*;
  * set to the debug level. This allows for more debug messages as the StatusLogger will be in the error level until a
  * configuration file has been read and parsed into a tree of Nodes.
  */
-public class LoggerContextRule implements TestRule {
+public class LoggerContextRule implements TestRule, LoggerContextAccessor {
 
     public static LoggerContextRule createShutdownTimeoutLoggerContextRule(final String config) {
         return new LoggerContextRule(config, 10, TimeUnit.SECONDS);
     }
-    
+
     private static final String SYS_PROP_KEY_CLASS_NAME = "org.apache.logging.log4j.junit.LoggerContextRule#ClassName";
     private static final String SYS_PROP_KEY_DISPLAY_NAME = "org.apache.logging.log4j.junit.LoggerContextRule#DisplayName";
     private final String configLocation;
@@ -144,8 +145,9 @@ public class LoggerContextRule implements TestRule {
      *            the name of the Appender to look up.
      * @return the named Appender or {@code null} if it wasn't defined in the configuration.
      */
-    public Appender getAppender(final String name) {
-        return getConfiguration().getAppenders().get(name);
+    @SuppressWarnings("unchecked") // Assume the call site knows what it is doing.
+	public <T extends Appender> T getAppender(final String name) {
+        return (T) getConfiguration().getAppenders().get(name);
     }
 
     /**
@@ -177,6 +179,7 @@ public class LoggerContextRule implements TestRule {
      *
      * @return the current LoggerContext.
      */
+    @Override
     public LoggerContext getLoggerContext() {
         return loggerContext;
     }
@@ -275,7 +278,7 @@ public class LoggerContextRule implements TestRule {
     public void reconfigure() {
         loggerContext.reconfigure();
     }
-    
+
     @Override
     public String toString() {
         final StringBuilder builder = new StringBuilder();

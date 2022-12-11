@@ -33,7 +33,6 @@ import javax.jms.MessageProducer;
 import javax.jms.Session;
 import javax.naming.NamingException;
 
-import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractManager;
 import org.apache.logging.log4j.core.appender.AppenderLoggingException;
@@ -112,6 +111,14 @@ public class JmsManager extends AbstractManager {
             return retry;
         }
 
+        @Override
+        public String toString() {
+            return "JmsManagerConfiguration [jndiProperties=" + jndiProperties + ", connectionFactoryName="
+                    + connectionFactoryName + ", destinationName=" + destinationName + ", userName=" + userName
+                    + ", immediateFail=" + immediateFail + ", retry=" + retry + ", reconnectIntervalMillis="
+                    + reconnectIntervalMillis + "]";
+        }
+
     }
 
     private static class JmsManagerFactory implements ManagerFactory<JmsManager, JmsManagerConfiguration> {
@@ -121,14 +128,14 @@ public class JmsManager extends AbstractManager {
             try {
                 return new JmsManager(name, data);
             } catch (final Exception e) {
-                LOGGER.error("Error creating JmsManager using JmsManagerConfiguration [{}]", data, e);
+                logger().error("Error creating JmsManager using JmsManagerConfiguration [{}]", data, e);
                 return null;
             }
         }
     }
 
     /**
-     * Handles reconnecting to a Socket on a Thread.
+     * Handles reconnecting to JMS on a Thread.
      */
     private class Reconnector extends Log4jThread {
 
@@ -138,7 +145,7 @@ public class JmsManager extends AbstractManager {
 
         private final Object owner;
 
-        public Reconnector(final Object owner) {
+        private Reconnector(final Object owner) {
             super("JmsManager-Reconnector");
             this.owner = owner;
         }
@@ -167,7 +174,7 @@ public class JmsManager extends AbstractManager {
                 reconnector = null;
                 shutdown = true;
             }
-            LOGGER.debug("Connection reestablished to {}", configuration);
+            logger().debug("Connection reestablished to {}", configuration);
         }
 
         @Override
@@ -177,7 +184,7 @@ public class JmsManager extends AbstractManager {
                     sleep(configuration.getReconnectIntervalMillis());
                     reconnect();
                 } catch (final InterruptedException | JMSException | NamingException e) {
-                    LOGGER.debug("Cannot reestablish JMS connection to {}: {}", configuration, e.getLocalizedMessage(),
+                    logger().debug("Cannot reestablish JMS connection to {}: {}", configuration, e.getLocalizedMessage(),
                             e);
                 } finally {
                     latch.countDown();
@@ -190,8 +197,6 @@ public class JmsManager extends AbstractManager {
         }
 
     }
-
-    private static final Logger LOGGER = StatusLogger.getLogger();
 
     static final JmsManagerFactory FACTORY = new JmsManagerFactory();
 
@@ -213,8 +218,8 @@ public class JmsManager extends AbstractManager {
      *            fails.
      * @param reconnectIntervalMillis
      *            How to log sleep in milliseconds before trying to reconnect to JMS.
-     * @param jndiManager
-     *            The JndiManager to look up JMS information through.
+     * @param jndiProperties
+     *            JNDI properties.
      * @return The JmsManager as configured.
      */
     public static JmsManager getJmsManager(final String name, final Properties jndiProperties,
@@ -381,7 +386,8 @@ public class JmsManager extends AbstractManager {
      * @return A MessageProducer on this Destination.
      * @throws JMSException
      */
-    public MessageProducer createMessageProducer(final Session session, final Destination destination) throws JMSException {
+    public MessageProducer createMessageProducer(final Session session, final Destination destination)
+            throws JMSException {
         return session.createProducer(destination);
     }
 
@@ -410,7 +416,7 @@ public class JmsManager extends AbstractManager {
 
     private MapMessage map(final org.apache.logging.log4j.message.MapMessage<?, ?> log4jMapMessage,
             final MapMessage jmsMapMessage) {
-        // Map without calling rg.apache.logging.log4j.message.MapMessage#getData() which makes a copy of the map.
+        // Map without calling org.apache.logging.log4j.message.MapMessage#getData() which makes a copy of the map.
         log4jMapMessage.forEach(new BiConsumer<String, Object>() {
             @Override
             public void accept(final String key, final Object value) {
@@ -444,10 +450,10 @@ public class JmsManager extends AbstractManager {
         if (messageProducer == null) {
             if (reconnector != null && !configuration.isImmediateFail()) {
                 reconnector.latch();
-            }
-            if (messageProducer == null) {
-                throw new AppenderLoggingException(
-                        "Error sending to JMS Manager '" + getName() + "': JMS message producer not available");
+                if (messageProducer == null) {
+                    throw new AppenderLoggingException(
+                            "Error sending to JMS Manager '" + getName() + "': JMS message producer not available");
+                }
             }
         }
         synchronized (this) {
@@ -460,18 +466,18 @@ public class JmsManager extends AbstractManager {
                         closeJndiManager();
                         reconnector.reconnect();
                     } catch (NamingException | JMSException reconnEx) {
-                        LOGGER.debug("Cannot reestablish JMS connection to {}: {}; starting reconnector thread {}",
+                        logger().debug("Cannot reestablish JMS connection to {}: {}; starting reconnector thread {}",
                                 configuration, reconnEx.getLocalizedMessage(), reconnector.getName(), reconnEx);
                         reconnector.start();
                         throw new AppenderLoggingException(
-                                String.format("Error sending to %s for %s", getName(), configuration), causeEx);
+                                String.format("JMS exception sending to %s for %s", getName(), configuration), causeEx);
                     }
                     try {
                         createMessageAndSend(event, serializable);
                     } catch (final JMSException e) {
                         throw new AppenderLoggingException(
-                                String.format("Error sending to %s after reestablishing connection for %s", getName(),
-                                        configuration),
+                                String.format("Error sending to %s after reestablishing JMS connection for %s",
+                                        getName(), configuration),
                                 causeEx);
                     }
                 }

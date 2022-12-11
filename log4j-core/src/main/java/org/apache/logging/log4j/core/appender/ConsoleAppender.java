@@ -16,21 +16,11 @@
  */
 package org.apache.logging.log4j.core.appender;
 
-import java.io.FileDescriptor;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
-import java.io.Serializable;
-import java.io.UnsupportedEncodingException;
-import java.lang.reflect.Constructor;
-import java.nio.charset.Charset;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.Layout;
+import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
@@ -38,16 +28,25 @@ import org.apache.logging.log4j.core.config.plugins.validation.constraints.Requi
 import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.core.util.Booleans;
 import org.apache.logging.log4j.core.util.CloseShieldOutputStream;
-import org.apache.logging.log4j.util.LoaderUtil;
+import org.apache.logging.log4j.core.util.Loader;
+import org.apache.logging.log4j.core.util.Throwables;
+import org.apache.logging.log4j.util.Chars;
 import org.apache.logging.log4j.util.PropertiesUtil;
+
+import java.io.*;
+import java.lang.reflect.Constructor;
+import java.nio.charset.Charset;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Appends log events to <code>System.out</code> or <code>System.err</code> using a layout specified by the user. The
  * default target is <code>System.out</code>.
  * <p>
- * TODO accessing System.out or .err as a byte stream instead of a writer bypasses the JVM's knowledge of the proper
- * encoding. (RG) Encoding is handled within the Layout. Typically, a Layout will generate a String and then call
- * getBytes which may use a configured encoding or the system default. OTOH, a Writer cannot print byte streams.
+ * TODO Accessing <code>System.out</code> or <code>System.err</code> as a byte stream instead of a writer bypasses the
+ * JVM's knowledge of the proper encoding. (RG) Encoding is handled within the Layout. Typically, a Layout will generate
+ * a String and then call getBytes which may use a configured encoding or the system default. OTOH, a Writer cannot
+ * print byte streams.
+ * </p>
  */
 @Plugin(name = ConsoleAppender.PLUGIN_NAME, category = Core.CATEGORY_NAME, elementType = Appender.ELEMENT_TYPE, printObject = true)
 public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputStreamManager> {
@@ -64,32 +63,37 @@ public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputSt
      * Enumeration of console destinations.
      */
     public enum Target {
+
         /** Standard output. */
         SYSTEM_OUT {
             @Override
             public Charset getDefaultCharset() {
-                return getCharset("sun.stdout.encoding");
+                // "sun.stdout.encoding" is only set when running from the console.
+                return getCharset("sun.stdout.encoding", Charset.defaultCharset());
             }
         },
+
         /** Standard error output. */
         SYSTEM_ERR {
             @Override
             public Charset getDefaultCharset() {
-                return getCharset("sun.stderr.encoding");
+                // "sun.stderr.encoding" is only set when running from the console.
+                return getCharset("sun.stderr.encoding", Charset.defaultCharset());
             }
         };
-        
+
         public abstract Charset getDefaultCharset();
-        
-        protected Charset getCharset(final String property) {
-            return new PropertiesUtil(PropertiesUtil.getSystemProperties()).getCharsetProperty(property);
+
+        protected Charset getCharset(final String property, final Charset defaultCharset) {
+            return new PropertiesUtil(PropertiesUtil.getSystemProperties()).getCharsetProperty(property, defaultCharset);
         }
 
     }
 
     private ConsoleAppender(final String name, final Layout<? extends Serializable> layout, final Filter filter,
-            final OutputStreamManager manager, final boolean ignoreExceptions, final Target target) {
-        super(name, layout, filter, ignoreExceptions, true, manager);
+            final OutputStreamManager manager, final boolean ignoreExceptions, final Target target,
+            final Property[] properties) {
+        super(name, layout, filter, ignoreExceptions, true, properties, manager);
         this.target = target;
     }
 
@@ -123,7 +127,7 @@ public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputSt
         final boolean isFollow = Boolean.parseBoolean(follow);
         final boolean ignoreExceptions = Booleans.parseBoolean(ignore, true);
         final Target target = targetStr == null ? DEFAULT_TARGET : Target.valueOf(targetStr);
-        return new ConsoleAppender(name, layout, filter, getManager(target, isFollow, false, layout), ignoreExceptions, target);
+        return new ConsoleAppender(name, layout, filter, getManager(target, isFollow, false, layout), ignoreExceptions, target, null);
     }
 
     /**
@@ -164,13 +168,13 @@ public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputSt
             LOGGER.error("Cannot use both follow and direct on ConsoleAppender");
             return null;
         }
-        return new ConsoleAppender(name, layout, filter, getManager(target, follow, direct, layout), ignoreExceptions, target);
+        return new ConsoleAppender(name, layout, filter, getManager(target, follow, direct, layout), ignoreExceptions, target, null);
     }
 
     public static ConsoleAppender createDefaultAppenderForLayout(final Layout<? extends Serializable> layout) {
         // this method cannot use the builder class without introducing an infinite loop due to DefaultConfiguration
         return new ConsoleAppender("DefaultConsole-" + COUNT.incrementAndGet(), layout, null,
-                getDefaultManager(DEFAULT_TARGET, false, false, layout), true, DEFAULT_TARGET);
+                getDefaultManager(DEFAULT_TARGET, false, false, layout), true, DEFAULT_TARGET, null);
     }
 
     @PluginBuilderFactory
@@ -217,7 +221,7 @@ public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputSt
             }
             final Layout<? extends Serializable> layout = getOrCreateLayout(target.getDefaultCharset());
             return new ConsoleAppender(getName(), layout, getFilter(), getManager(target, follow, direct, layout),
-                    isIgnoreExceptions(), target);
+                    isIgnoreExceptions(), target, getPropertyArray());
         }
     }
 
@@ -253,12 +257,12 @@ public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputSt
             throw new IllegalStateException("Unsupported default encoding " + enc, ex);
         }
         final PropertiesUtil propsUtil = PropertiesUtil.getProperties();
-        if (!propsUtil.isOsWindows() || propsUtil.getBooleanProperty("log4j.skipJansi") || direct) {
+        if (!propsUtil.isOsWindows() || propsUtil.getBooleanProperty("log4j.skipJansi", true) || direct) {
             return outputStream;
         }
         try {
             // We type the parameter as a wildcard to avoid a hard reference to Jansi.
-            final Class<?> clazz = LoaderUtil.loadClass(JANSI_CLASS);
+            final Class<?> clazz = Loader.loadClass(JANSI_CLASS);
             final Constructor<?> constructor = clazz.getConstructor(OutputStream.class);
             return new CloseShieldOutputStream((OutputStream) constructor.newInstance(outputStream));
         } catch (final ClassNotFoundException cnfe) {
@@ -266,12 +270,16 @@ public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputSt
         } catch (final NoSuchMethodException nsme) {
             LOGGER.warn("{} is missing the proper constructor", JANSI_CLASS);
         } catch (final Exception ex) {
-            LOGGER.warn("Unable to instantiate {}", JANSI_CLASS);
+            LOGGER.warn("Unable to instantiate {} due to {}", JANSI_CLASS, clean(Throwables.getRootCause(ex).toString()).trim());
         }
         return outputStream;
     }
 
-    /**
+    private static String clean(final String string) {
+		return string.replace(Chars.NUL, Chars.SPACE);
+	}
+
+	/**
      * An implementation of OutputStream that redirects to the current System.err.
      */
     private static class SystemErrStream extends OutputStream {
@@ -338,7 +346,7 @@ public final class ConsoleAppender extends AbstractOutputStreamAppender<OutputSt
     }
 
     /**
-     * Data to pass to factory method.
+     * Data to pass to factory method.Unable to instantiate
      */
     private static class FactoryData {
         private final OutputStream os;

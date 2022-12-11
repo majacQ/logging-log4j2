@@ -36,6 +36,8 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.ConfigurationFactory;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.jackson.Log4jYamlObjectMapper;
+import org.apache.logging.log4j.core.lookup.JavaLookup;
+import org.apache.logging.log4j.core.util.KeyValuePair;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.apache.logging.log4j.spi.AbstractLogger;
 import org.apache.logging.log4j.test.appender.ListAppender;
@@ -136,7 +138,7 @@ public class YamlLayoutTest {
         //
         assertNull(actual.getThrown());
         // make sure the names we want are used
-        this.checkPropertyName("timeMillis", compact, str, true);
+        this.checkPropertyName("instant", compact, str, false);
         this.checkPropertyName("thread", compact, str, true); // and not threadName
         this.checkPropertyName("level", compact, str, true);
         this.checkPropertyName("loggerName", compact, str, true);
@@ -300,6 +302,23 @@ public class YamlLayoutTest {
     }
 
     @Test
+    public void testAdditionalFields() throws Exception {
+        final AbstractJacksonLayout layout = YamlLayout.newBuilder()
+                .setLocationInfo(false)
+                .setProperties(false)
+                .setIncludeStacktrace(false)
+                .setAdditionalFields(new KeyValuePair[] {
+                    new KeyValuePair("KEY1", "VALUE1"),
+                    new KeyValuePair("KEY2", "${java:runtime}"), })
+                .setCharset(StandardCharsets.UTF_8)
+                .setConfiguration(ctx.getConfiguration())
+                .build();
+        final String str = layout.toSerializable(LogEventFixtures.createLogEvent());
+        assertTrue(str, str.contains("KEY1: \"VALUE1\""));
+        assertTrue(str, str.contains("KEY2: \"" + new JavaLookup().getRuntime() + "\""));
+    }
+
+    @Test
     public void testLocationOffCompactOffMdcOff() throws Exception {
         this.testAllFeatures(false, false, false, false, false, true);
     }
@@ -335,6 +354,24 @@ public class YamlLayoutTest {
                 .build();
         // @formatter:off
         return layout.toSerializable(expected);
+    }
+
+    @Test
+    public void testIncludeNullDelimiterTrue() throws Exception {
+        final AbstractJacksonLayout layout = YamlLayout.newBuilder()
+                .setIncludeNullDelimiter(true)
+                .build();
+        final String str = layout.toSerializable(LogEventFixtures.createLogEvent());
+        assertTrue(str.endsWith("\0"));
+    }
+
+    @Test
+    public void testIncludeNullDelimiterFalse() throws Exception {
+        final AbstractJacksonLayout layout = YamlLayout.newBuilder()
+                .setIncludeNullDelimiter(false)
+                .build();
+        final String str = layout.toSerializable(LogEventFixtures.createLogEvent());
+        assertFalse(str.endsWith("\0"));
     }
 
     private String toPropertySeparator(final boolean compact, final boolean value) {

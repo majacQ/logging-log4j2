@@ -47,6 +47,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.config.plugins.convert.Base64Converter;
 import org.apache.logging.log4j.core.jackson.Log4jJsonObjectMapper;
 import org.apache.logging.log4j.core.jackson.Log4jXmlObjectMapper;
+import org.apache.logging.log4j.core.pattern.PlainTextRenderer;
 import org.apache.logging.log4j.util.Strings;
 import org.junit.Test;
 
@@ -92,6 +93,12 @@ public class ThrowableProxyTest {
             }
         }
         return true;
+    }
+
+    private boolean lastLineContains(final String text, final String containedText) {
+        final String[] lines = text.split("\n");
+        final String lastLine = lines[lines.length-1];
+        return lastLine.contains(containedText);
     }
 
     private void testIoContainer(final ObjectMapper objectMapper ) throws IOException {
@@ -294,12 +301,24 @@ public class ThrowableProxyTest {
     }
 
     @Test
+    public void testSeparator_getExtendedStackTraceAsString() throws Exception {
+        final Throwable throwable = new IllegalArgumentException("This is a test");
+        final ThrowableProxy proxy = new ThrowableProxy(throwable);
+
+        final String separator = " | ";
+        final String extendedStackTraceAsString = proxy.getExtendedStackTraceAsString(null,
+                PlainTextRenderer.getInstance(), " | ", Strings.EMPTY);
+        assertTrue(extendedStackTraceAsString, allLinesContain(extendedStackTraceAsString, separator));
+    }
+
+    @Test
     public void testSuffix_getExtendedStackTraceAsString() throws Exception {
         final Throwable throwable = new IllegalArgumentException("This is a test");
         final ThrowableProxy proxy = new ThrowableProxy(throwable);
 
         final String suffix = "some suffix";
-        assertTrue(allLinesContain(proxy.getExtendedStackTraceAsString(suffix), suffix));
+        final String extendedStackTraceAsString = proxy.getExtendedStackTraceAsString(suffix);
+        assertTrue(extendedStackTraceAsString, lastLineContains(extendedStackTraceAsString, suffix));
     }
 
     @Test
@@ -353,11 +372,11 @@ public class ThrowableProxyTest {
 
     @Test
     public void testStack() {
-        final Map<String, ThrowableProxy.CacheEntry> map = new HashMap<>();
+        final Map<String, ThrowableProxyHelper.CacheEntry> map = new HashMap<>();
         final Stack<Class<?>> stack = new Stack<>();
         final Throwable throwable = new IllegalStateException("This is a test");
         final ThrowableProxy proxy = new ThrowableProxy(throwable);
-        final ExtendedStackTraceElement[] callerPackageData = proxy.toExtendedStackTrace(stack, map, null,
+        final ExtendedStackTraceElement[] callerPackageData = ThrowableProxyHelper.toExtendedStackTrace(proxy, stack, map, null,
                 throwable.getStackTrace());
         assertNotNull("No package data returned", callerPackageData);
     }
@@ -370,7 +389,7 @@ public class ThrowableProxyTest {
     @Test
     public void testStackWithUnloadableClass() throws Exception {
         final Stack<Class<?>> stack = new Stack<>();
-        final Map<String, ThrowableProxy.CacheEntry> map = new HashMap<>();
+        final Map<String, ThrowableProxyHelper.CacheEntry> map = new HashMap<>();
 
         final String runtimeExceptionThrownAtUnloadableClass_base64 = "rO0ABXNyABpqYXZhLmxhbmcuUnVudGltZUV4Y2VwdGlvbp5fBkcKNIPlAgAAeHIAE2phdmEubGFuZy5FeGNlcHRpb27Q/R8+GjscxAIAAHhyABNqYXZhLmxhbmcuVGhyb3dhYmxl1cY1Jzl3uMsDAANMAAVjYXVzZXQAFUxqYXZhL2xhbmcvVGhyb3dhYmxlO0wADWRldGFpbE1lc3NhZ2V0ABJMamF2YS9sYW5nL1N0cmluZztbAApzdGFja1RyYWNldAAeW0xqYXZhL2xhbmcvU3RhY2tUcmFjZUVsZW1lbnQ7eHBxAH4ABnB1cgAeW0xqYXZhLmxhbmcuU3RhY2tUcmFjZUVsZW1lbnQ7AkYqPDz9IjkCAAB4cAAAAAFzcgAbamF2YS5sYW5nLlN0YWNrVHJhY2VFbGVtZW50YQnFmiY23YUCAARJAApsaW5lTnVtYmVyTAAOZGVjbGFyaW5nQ2xhc3NxAH4ABEwACGZpbGVOYW1lcQB+AARMAAptZXRob2ROYW1lcQB+AAR4cAAAAAZ0ADxvcmcuYXBhY2hlLmxvZ2dpbmcubG9nNGouY29yZS5pbXBsLkZvcmNlTm9EZWZDbGFzc0ZvdW5kRXJyb3J0AB5Gb3JjZU5vRGVmQ2xhc3NGb3VuZEVycm9yLmphdmF0AARtYWlueA==";
         final byte[] binaryDecoded = Base64Converter
@@ -380,7 +399,7 @@ public class ThrowableProxyTest {
         final Throwable throwable = (Throwable) in.readObject();
         final ThrowableProxy subject = new ThrowableProxy(throwable);
 
-        subject.toExtendedStackTrace(stack, map, null, throwable.getStackTrace());
+        ThrowableProxyHelper.toExtendedStackTrace(subject, stack, map, null, throwable.getStackTrace());
     }
 
     /**

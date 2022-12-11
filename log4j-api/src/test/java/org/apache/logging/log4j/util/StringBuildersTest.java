@@ -34,4 +34,59 @@ public class StringBuildersTest {
         StringBuilders.trimToMaxSize(sb, Constants.MAX_REUSABLE_MESSAGE_SIZE);
         assertTrue("trimmed OK", sb.length() <= Constants.MAX_REUSABLE_MESSAGE_SIZE);
     }
+
+    @Test
+    public void trimToMaxSizeWithLargeCapacity() throws Exception {
+        final StringBuilder sb = new StringBuilder();
+        final char[] value = new char[4 * 1024];
+        sb.append(value);
+        sb.setLength(0);
+
+        assertTrue("needs trimming", sb.capacity() > Constants.MAX_REUSABLE_MESSAGE_SIZE);
+        StringBuilders.trimToMaxSize(sb, Constants.MAX_REUSABLE_MESSAGE_SIZE);
+        assertTrue("trimmed OK", sb.capacity() <= Constants.MAX_REUSABLE_MESSAGE_SIZE);
+    }
+
+    @Test
+    public void escapeJsonCharactersCorrectly() {
+        final String jsonValueNotEscaped = "{\"field\n1\":\"value_1\"}";
+        final String jsonValueEscaped = "{\\\"field\\n1\\\":\\\"value_1\\\"}";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(jsonValueNotEscaped);
+        assertEquals(jsonValueNotEscaped, sb.toString());
+        StringBuilders.escapeJson(sb, 0);
+        assertEquals(jsonValueEscaped, sb.toString());
+
+        sb = new StringBuilder();
+        final String jsonValuePartiallyEscaped = "{\"field\n1\":\\\"value_1\\\"}";
+        sb.append(jsonValueNotEscaped);
+        assertEquals(jsonValueNotEscaped, sb.toString());
+        StringBuilders.escapeJson(sb, 10);
+        assertEquals(jsonValuePartiallyEscaped, sb.toString());
+    }
+
+    @Test
+    public void escapeJsonCharactersISOControl() {
+        final String jsonValueNotEscaped = "{\"field\n1\":\"value" + (char) 0x8F + "_1\"}";
+        final String jsonValueEscaped = "{\\\"field\\n1\\\":\\\"value\\u008F_1\\\"}";
+
+        final StringBuilder sb = new StringBuilder();
+        sb.append(jsonValueNotEscaped);
+        assertEquals(jsonValueNotEscaped, sb.toString());
+        StringBuilders.escapeJson(sb, 0);
+        assertEquals(jsonValueEscaped, sb.toString());
+    }
+
+    @Test
+    public void escapeXMLCharactersCorrectly() {
+        final String xmlValueNotEscaped = "<\"Salt&Peppa'\">";
+        final String xmlValueEscaped = "&lt;&quot;Salt&amp;Peppa&apos;&quot;&gt;";
+
+        final StringBuilder sb = new StringBuilder();
+        sb.append(xmlValueNotEscaped);
+        assertEquals(xmlValueNotEscaped, sb.toString());
+        StringBuilders.escapeXml(sb, 0);
+        assertEquals(xmlValueEscaped, sb.toString());
+    }
 }

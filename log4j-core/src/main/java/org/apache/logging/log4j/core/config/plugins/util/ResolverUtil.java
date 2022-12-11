@@ -18,8 +18,8 @@ package org.apache.logging.log4j.core.config.plugins.util;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -112,7 +112,7 @@ public class ResolverUtil {
 
     /**
      * Returns the matching resources.
-     * 
+     *
      * @return A Set of URIs that match the criteria.
      */
     public Set<URI> getResources() {
@@ -199,13 +199,29 @@ public class ResolverUtil {
                         close(stream, newURL);
                     }
                 } else if (VFS.equals(url.getProtocol())) {
-                    final String containerPath = urlPath.substring(1,
-                                                  urlPath.length() - packageName.length() - 2);
+                    final String containerPath = urlPath.substring(1, urlPath.length() - packageName.length() - 2);
                     final File containerFile = new File(containerPath);
-                    if (containerFile.isDirectory()) {
-                        loadImplementationsInDirectory(test, packageName, new File(containerFile, packageName));
+                    if (containerFile.exists()) {
+                        if (containerFile.isDirectory()) {
+                            loadImplementationsInDirectory(test, packageName, new File(containerFile, packageName));
+                        } else {
+                            loadImplementationsInJar(test, packageName, containerFile);
+                        }
                     } else {
-                        loadImplementationsInJar(test, packageName, containerFile);
+                        // fallback code for Jboss/Wildfly, if the file couldn't be found
+                        // by loading the path as a file, try to read the jar as a stream
+                        final String path = urlPath.substring(0, urlPath.length() - packageName.length() - 2);
+                        final URL newURL = new URL(url.getProtocol(), url.getHost(), path);
+
+                        try (final InputStream is = newURL.openStream()) {
+                            final JarInputStream jarStream;
+                            if (is instanceof JarInputStream) {
+                                jarStream = (JarInputStream) is;
+                            } else {
+                                jarStream = new JarInputStream(is);
+                            }
+                            loadImplementationsInJar(test, packageName, path, jarStream);
+                        }
                     }
                 } else if (BUNDLE_RESOURCE.equals(url.getProtocol())) {
                     loadImplementationsInBundle(test, packageName);
@@ -416,7 +432,7 @@ public class ResolverUtil {
         /**
          * Will be called repeatedly with candidate classes. Must return True if a class is to be included in the
          * results, false otherwise.
-         * 
+         *
          * @param type
          *        The Class to match against.
          * @return true if the Class matches.
@@ -425,7 +441,7 @@ public class ResolverUtil {
 
         /**
          * Test for a resource.
-         * 
+         *
          * @param resource
          *        The URI to the resource.
          * @return true if the resource matches.

@@ -24,6 +24,8 @@ import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.ThreadContext;
 import org.apache.logging.log4j.ThreadContext.ContextStack;
 import org.apache.logging.log4j.core.impl.ThrowableProxy;
+import org.apache.logging.log4j.core.time.Instant;
+import org.apache.logging.log4j.core.time.MutableInstant;
 import org.apache.logging.log4j.message.Message;
 import org.apache.logging.log4j.util.ReadOnlyStringMap;
 
@@ -34,6 +36,8 @@ import org.apache.logging.log4j.util.ReadOnlyStringMap;
 public abstract class AbstractLogEvent implements LogEvent {
 
     private static final long serialVersionUID = 1L;
+
+    private volatile MutableInstant instant;
 
     /**
      * Subclasses should implement this method to provide an immutable version.
@@ -119,6 +123,18 @@ public abstract class AbstractLogEvent implements LogEvent {
     @Override
     public long getTimeMillis() {
         return 0;
+    }
+
+    @Override
+    public Instant getInstant() {
+        return getMutableInstant();
+    }
+
+    protected final MutableInstant getMutableInstant() {
+        if (instant == null) {
+            instant = new MutableInstant();
+        }
+        return instant;
     }
 
     @Override

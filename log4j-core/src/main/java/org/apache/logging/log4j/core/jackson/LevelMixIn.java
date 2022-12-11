@@ -21,7 +21,6 @@ import org.apache.logging.log4j.Marker;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
@@ -34,8 +33,8 @@ import com.fasterxml.jackson.annotation.JsonValue;
 @JsonIgnoreProperties({ "name", "declaringClass", "standardLevel" })
 abstract class LevelMixIn {
 
-    @JsonCreator
-    public static Level getLevel(@JsonProperty("name") final String name) {
+    @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+    public static Level getLevel(final String name) {
         return null;
     }
 

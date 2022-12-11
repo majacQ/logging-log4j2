@@ -19,6 +19,7 @@ package org.apache.logging.log4j.spi;
 import java.io.Serializable;
 
 import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LoggingException;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.apache.logging.log4j.message.DefaultFlowMessageFactory;
@@ -37,6 +38,7 @@ import org.apache.logging.log4j.util.Constants;
 import org.apache.logging.log4j.util.LambdaUtil;
 import org.apache.logging.log4j.util.LoaderUtil;
 import org.apache.logging.log4j.util.MessageSupplier;
+import org.apache.logging.log4j.util.PerformanceSensitive;
 import org.apache.logging.log4j.util.PropertiesUtil;
 import org.apache.logging.log4j.util.Strings;
 import org.apache.logging.log4j.util.Supplier;
@@ -45,6 +47,10 @@ import org.apache.logging.log4j.util.Supplier;
  * Base implementation of a Logger. It is highly recommended that any Logger implementation extend this class.
  */
 public abstract class AbstractLogger implements ExtendedLogger, Serializable {
+    // Implementation note: many methods in this class are tuned for performance. MODIFY WITH CARE!
+    // Specifically, try to keep the hot methods to 35 bytecodes or less:
+    // this is within the MaxInlineSize threshold on Java 7 and Java 8 Hotspot and makes these methods
+    // candidates for immediate inlining instead of waiting until they are designated "hot enough".
 
     /**
      * Marker for flow tracing.
@@ -98,6 +104,7 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
     protected final String name;
     private final MessageFactory2 messageFactory;
     private final FlowMessageFactory flowMessageFactory;
+    private static ThreadLocal<int[]> recursionDepthHolder = new ThreadLocal<>(); // LOG4J2-1518, LOG4J2-2031
 
     /**
      * Creates a new logger named after this class (or subclass).
@@ -571,6 +578,7 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
         return flowMessage;
     }
 
+    @Deprecated
     @Override
     public void entry() {
         entry(FQCN, (Object[]) null);
@@ -900,11 +908,13 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
         logIfEnabled(FQCN, Level.ERROR, null, message, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9);
     }
 
+    @Deprecated
     @Override
     public void exit() {
         exit(FQCN, (Object) null);
     }
 
+    @Deprecated
     @Override
     public <R> R exit(final R result) {
         return exit(FQCN, result);
@@ -919,7 +929,9 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      * @return the return value passed to this method.
      */
     protected <R> R exit(final String fqcn, final R result) {
-        logIfEnabled(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(null, result), null);
+        if (isEnabled(Level.TRACE, EXIT_MARKER, (CharSequence) null, null)) {
+            logMessageSafely(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(null, result), null);
+        }
         return result;
     }
 
@@ -932,7 +944,9 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
      * @return the return value passed to this method.
      */
     protected <R> R exit(final String fqcn, final String format, final R result) {
-        logIfEnabled(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(format, result), null);
+        if (isEnabled(Level.TRACE, EXIT_MARKER, (CharSequence) null, null)) {
+            logMessageSafely(fqcn, Level.TRACE, EXIT_MARKER, exitMsg(format, result), null);
+        }
         return result;
     }
 
@@ -2085,14 +2099,98 @@ public abstract class AbstractLogger implements ExtendedLogger, Serializable {
         }
     }
 
+    @PerformanceSensitive
+    // NOTE: This is a hot method. Current implementation compiles to 30 bytes of byte code.
+    // This is within the 35 byte MaxInlineSize threshold. Modify with care!
     private void logMessageSafely(final String fqcn, final Level level, final Marker marker, final Message msg,
             final Throwable throwable) {
         try {
-            logMessage(fqcn, level, marker, msg, throwable);
+            logMessageTrackRecursion(fqcn, level, marker, msg, throwable);
         } finally {
             // LOG4J2-1583 prevent scrambled logs when logging calls are nested (logging in toString())
             ReusableMessageFactory.release(msg);
         }
+    }
+
+    @PerformanceSensitive
+    // NOTE: This is a hot method. Current implementation compiles to 29 bytes of byte code.
+    // This is within the 35 byte MaxInlineSize threshold. Modify with care!
+    private void logMessageTrackRecursion(final String fqcn,
+                                          final Level level,
+                                          final Marker marker,
+                                          final Message msg,
+                                          final Throwable throwable) {
+        try {
+            incrementRecursionDepth(); // LOG4J2-1518, LOG4J2-2031
+            tryLogMessage(fqcn, level, marker, msg, throwable);
+        } finally {
+            decrementRecursionDepth();
+        }
+    }
+
+    private static int[] getRecursionDepthHolder() {
+        int[] result = recursionDepthHolder.get();
+        if (result == null) {
+            result = new int[1];
+            recursionDepthHolder.set(result);
+        }
+        return result;
+    }
+
+    private static void incrementRecursionDepth() {
+        getRecursionDepthHolder()[0]++;
+    }
+    private static void decrementRecursionDepth() {
+        final int[] depth = getRecursionDepthHolder();
+        depth[0]--;
+        if (depth[0] < 0) {
+            throw new IllegalStateException("Recursion depth became negative: " + depth[0]);
+        }
+    }
+
+    /**
+     * Returns the depth of nested logging calls in the current Thread: zero if no logging call has been made,
+     * one if a single logging call without nested logging calls has been made, or more depending on the level of
+     * nesting.
+     * @return the depth of the nested logging calls in the current Thread
+     */
+    public static int getRecursionDepth() {
+        return getRecursionDepthHolder()[0];
+    }
+
+    @PerformanceSensitive
+    // NOTE: This is a hot method. Current implementation compiles to 26 bytes of byte code.
+    // This is within the 35 byte MaxInlineSize threshold. Modify with care!
+    private void tryLogMessage(final String fqcn,
+                               final Level level,
+                               final Marker marker,
+                               final Message msg,
+                               final Throwable throwable) {
+        try {
+            logMessage(fqcn, level, marker, msg, throwable);
+        } catch (final Exception e) {
+            // LOG4J2-1990 Log4j2 suppresses all exceptions that occur once application called the logger
+            handleLogMessageException(e, fqcn, msg);
+        }
+    }
+
+    // LOG4J2-1990 Log4j2 suppresses all exceptions that occur once application called the logger
+    // TODO Configuration setting to propagate exceptions back to the caller *if requested*
+    private void handleLogMessageException(final Exception exception, final String fqcn, final Message msg) {
+        if (exception instanceof LoggingException) {
+            throw (LoggingException) exception;
+        }
+        final String format = msg.getFormat();
+        final int formatLength = format == null ? 4 : format.length();
+        final StringBuilder sb = new StringBuilder(formatLength + 100);
+        sb.append(fqcn);
+        sb.append(" caught ");
+        sb.append(exception.getClass().getName());
+        sb.append(" logging ");
+        sb.append(msg.getClass().getSimpleName());
+        sb.append(": ");
+        sb.append(format);
+        StatusLogger.getLogger().warn(sb.toString(), exception);
     }
 
     @Override

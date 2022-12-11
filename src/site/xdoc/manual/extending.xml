@@ -55,7 +55,7 @@
                 <li>Implement a new <code>LoggerContextFactory</code>.</li>
                 <li>Implement a class that extends <code>org.apache.logging.spi.Provider.</code> with a no-arg
                   constructor that calls super-class's constructor with the <var>Priority</var>, the API version(s),
-                  <code>LoggerContextFactory</code> class, and optinall, a <code>ThreadContextMap</code>
+                  <code>LoggerContextFactory</code> class, and optionally, a <code>ThreadContextMap</code>
                   implementation class.</li>
                 <li>Create a <code>META-INF/services/org.apache.logging.spi.Provider</code> file that contains the
                   name of the class that implements <code>org.apache.logging.spi.Provider</code>.
@@ -318,12 +318,16 @@ public final class ThresholdFilter extends AbstractFilter {
               new one. This insures that events are not lost while a reconfiguration is taking place without
               requiring that logging pause while the reconfiguration takes place.
             </p>
-            <pre class="prettyprint linenums">
+            <pre class="prettyprint linenums"><![CDATA[
 @Plugin(name = "Stub", category = "Core", elementType = "appender", printObject = true)
-public final class StubAppender extends OutputStreamAppender {
+public final class StubAppender extends AbstractOutputStreamAppender<StubManager> {
 
-    private StubAppender(String name, Layout layout, Filter filter, StubManager manager,
-                         boolean ignoreExceptions) {
+    private StubAppender(String name,
+                         Layout<? extends Serializable> layout,
+                         Filter filter,
+                         boolean ignoreExceptions,
+                         StubManager  manager) {
+        super(name, layout, filter, ignoreExceptions, true, manager);
     }
 
     @PluginFactory
@@ -344,9 +348,9 @@ public final class StubAppender extends OutputStreamAppender {
         if (layout == null) {
             layout = PatternLayout.createDefaultLayout();
         }
-        return new StubAppender(name, layout, filter, manager, ignoreExceptions);
+        return new StubAppender(name, layout, filter, ignoreExceptions, manager);
     }
-}</pre>
+}]]></pre>
           </subsection>
           <subsection name="Layouts">
             <p>
@@ -534,7 +538,7 @@ ListAppender list2 = ListAppender.newBuilder().setName("List1").setEntryPerNewLi
             The default implementation is ThreadContextDataInjector, which obtains context attributes from the ThreadContext.
           </p><p>
           Applications may replace the default ContextDataInjector by setting the value of the system property
-          log4j2.ContextDataInjector to the name of the custom ContextDataInjector class.
+          <tt>log4j2.contextDataInjector</tt> to the name of the custom ContextDataInjector class.
         </p><p>
           Implementors should be aware there are some subtleties related to thread-safety and implementing a
           context data injector in a garbage-free manner.
@@ -544,11 +548,11 @@ ListAppender list2 = ListAppender.newBuilder().setName("List1").setEntryPerNewLi
         </subsection>
         <subsection name="Custom ThreadContextMap implementations">
           <p>
-            A garbage-free StringMap-based context map can be installed by setting system property log4j2.garbagefree.threadContextMap
+            A garbage-free StringMap-based context map can be installed by setting system property <tt>log4j2.garbagefreeThreadContextMap</tt>
             to true. (Log4j must be <a href="garbagefree.html#Config">enabled</a> to use ThreadLocals.)
           </p><p>
             Any custom <tt>ThreadContextMap</tt> implementation can be installed by setting system property
-            log4j2.threadContextMap to the fully qualified class name of the class implementing the
+            <tt>log4j2.threadContextMap</tt> to the fully qualified class name of the class implementing the
             ThreadContextMap interface. By also implementing the <tt>ReadOnlyThreadContextMap</tt> interface, your custom
             ThreadContextMap implementation will be accessible to applications via the
           <a href="../log4j-api/apidocs/org/apache/logging/log4j/ThreadContext.html#getThreadContextMap()">ThreadContext::getThreadContextMap</a>

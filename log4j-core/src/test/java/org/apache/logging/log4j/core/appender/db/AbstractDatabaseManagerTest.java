@@ -16,6 +16,7 @@
  */
 package org.apache.logging.log4j.core.appender.db;
 
+  <<<<<<< LOG4J2-1949
 import org.apache.logging.log4j.core.LogEvent;
 import org.junit.Test;
 
@@ -24,6 +25,12 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.any;
+  =======
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.isNull;
+  >>>>>>> new-iso-date-time-formats
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.doThrow;
@@ -31,59 +38,58 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
+  <<<<<<< LOG4J2-1949
 import static org.mockito.Mockito.verify;
+  =======
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+  >>>>>>> new-iso-date-time-formats
+
+import java.io.Serializable;
+
+import org.apache.logging.log4j.core.LogEvent;
+import org.junit.Test;
 
 public class AbstractDatabaseManagerTest {
+    // this stub is provided because mocking constructors is hard
+    private static class StubDatabaseManager extends AbstractDatabaseManager {
+
+        protected StubDatabaseManager(final String name, final int bufferSize) {
+            super(name, bufferSize);
+        }
+
+        @Override
+        protected boolean commitAndClose() {
+            return true;
+        }
+
+        @Override
+        protected void connectAndStart() {
+            // noop
+        }
+
+        @Override
+        protected boolean shutdownInternal() throws Exception {
+            return true;
+        }
+
+        @Override
+        protected void startupInternal() throws Exception {
+            // noop
+        }
+
+        @Override
+        protected void writeInternal(final LogEvent event, final Serializable serializable) {
+            // noop
+        }
+
+    }
+
     private AbstractDatabaseManager manager;
 
     public void setUp(final String name, final int buffer) {
         manager = spy(new StubDatabaseManager(name, buffer));
-    }
-
-    @Test
-    public void testStartupShutdown01() throws Exception {
-        setUp("testName01", 0);
-
-        assertEquals("The name is not correct.", "testName01", manager.getName());
-        assertFalse("The manager should not have started.", manager.isRunning());
-
-        manager.startup();
-        then(manager).should().startupInternal();
-        assertTrue("The manager should be running now.", manager.isRunning());
-
-        manager.shutdown();
-        then(manager).should().shutdownInternal();
-        assertFalse("The manager should not be running anymore.", manager.isRunning());
-    }
-
-    @Test
-    public void testStartupShutdown02() throws Exception {
-        setUp("anotherName02", 0);
-
-        assertEquals("The name is not correct.", "anotherName02", manager.getName());
-        assertFalse("The manager should not have started.", manager.isRunning());
-
-        manager.startup();
-        then(manager).should().startupInternal();
-        assertTrue("The manager should be running now.", manager.isRunning());
-
-        manager.releaseSub(-1, null);
-        then(manager).should().shutdownInternal();
-        assertFalse("The manager should not be running anymore.", manager.isRunning());
-    }
-
-    @Test
-    public void testToString01() {
-        setUp("someName01", 0);
-
-        assertEquals("The string is not correct.", "someName01", manager.toString());
-    }
-
-    @Test
-    public void testToString02() {
-        setUp("bufferSize=12, anotherKey02=coolValue02", 12);
-
-        assertEquals("The string is not correct.", "bufferSize=12, anotherKey02=coolValue02", manager.toString());
     }
 
     @Test
@@ -98,23 +104,32 @@ public class AbstractDatabaseManagerTest {
         then(manager).should().startupInternal();
         reset(manager);
 
-        manager.write(event1);
+        manager.write(event1, null);
+        then(manager).should().writeThrough(same(event1), (Serializable) isNull());
         then(manager).should().connectAndStart();
-        then(manager).should().writeInternal(same(event1));
-        then(manager).should().commitAndClose();
-        reset(manager);
-
-        manager.write(event2);
-        then(manager).should().connectAndStart();
-        then(manager).should().writeInternal(same(event2));
-        then(manager).should().commitAndClose();
-        reset(manager);
-
-        manager.write(event3);
-        then(manager).should().connectAndStart();
-        then(manager).should().writeInternal(same(event3));
+        then(manager).should().isBuffered();
+        then(manager).should().writeInternal(same(event1), (Serializable) isNull());
         then(manager).should().commitAndClose();
         then(manager).shouldHaveNoMoreInteractions();
+        reset(manager);
+
+        manager.write(event2, null);
+        then(manager).should().writeThrough(same(event2), (Serializable) isNull());
+        then(manager).should().connectAndStart();
+        then(manager).should().isBuffered();
+        then(manager).should().writeInternal(same(event2), (Serializable) isNull());
+        then(manager).should().commitAndClose();
+        then(manager).shouldHaveNoMoreInteractions();
+        reset(manager);
+
+        manager.write(event3, null);
+        then(manager).should().writeThrough(same(event3), (Serializable) isNull());
+        then(manager).should().connectAndStart();
+        then(manager).should().isBuffered();
+        then(manager).should().writeInternal(same(event3), (Serializable) isNull());
+        then(manager).should().commitAndClose();
+        then(manager).shouldHaveNoMoreInteractions();
+        reset(manager);
     }
 
     @Test
@@ -126,19 +141,34 @@ public class AbstractDatabaseManagerTest {
         final LogEvent event3 = mock(LogEvent.class);
         final LogEvent event4 = mock(LogEvent.class);
 
+        final LogEvent event1copy = mock(LogEvent.class);
+        final LogEvent event2copy = mock(LogEvent.class);
+        final LogEvent event3copy = mock(LogEvent.class);
+        final LogEvent event4copy = mock(LogEvent.class);
+
+        when(event1.toImmutable()).thenReturn(event1copy);
+        when(event2.toImmutable()).thenReturn(event2copy);
+        when(event3.toImmutable()).thenReturn(event3copy);
+        when(event4.toImmutable()).thenReturn(event4copy);
+
         manager.startup();
         then(manager).should().startupInternal();
 
-        manager.write(event1);
-        manager.write(event2);
-        manager.write(event3);
-        manager.write(event4);
+        manager.write(event1, null);
+        manager.write(event2, null);
+        manager.write(event3, null);
+        manager.write(event4, null);
 
         then(manager).should().connectAndStart();
-        then(manager).should().writeInternal(same(event1));
-        then(manager).should().writeInternal(same(event2));
-        then(manager).should().writeInternal(same(event3));
-        then(manager).should().writeInternal(same(event4));
+        verify(manager, times(5)).isBuffered(); // 4 + 1 in flush()
+        then(manager).should().writeInternal(same(event1copy), (Serializable) isNull());
+        then(manager).should().buffer(event1);
+        then(manager).should().writeInternal(same(event2copy), (Serializable) isNull());
+        then(manager).should().buffer(event2);
+        then(manager).should().writeInternal(same(event3copy), (Serializable) isNull());
+        then(manager).should().buffer(event3);
+        then(manager).should().writeInternal(same(event4copy), (Serializable) isNull());
+        then(manager).should().buffer(event4);
         then(manager).should().commitAndClose();
         then(manager).shouldHaveNoMoreInteractions();
     }
@@ -151,18 +181,30 @@ public class AbstractDatabaseManagerTest {
         final LogEvent event2 = mock(LogEvent.class);
         final LogEvent event3 = mock(LogEvent.class);
 
+        final LogEvent event1copy = mock(LogEvent.class);
+        final LogEvent event2copy = mock(LogEvent.class);
+        final LogEvent event3copy = mock(LogEvent.class);
+
+        when(event1.toImmutable()).thenReturn(event1copy);
+        when(event2.toImmutable()).thenReturn(event2copy);
+        when(event3.toImmutable()).thenReturn(event3copy);
+
         manager.startup();
         then(manager).should().startupInternal();
 
-        manager.write(event1);
-        manager.write(event2);
-        manager.write(event3);
+        manager.write(event1, null);
+        manager.write(event2, null);
+        manager.write(event3, null);
         manager.flush();
 
         then(manager).should().connectAndStart();
-        then(manager).should().writeInternal(same(event1));
-        then(manager).should().writeInternal(same(event2));
-        then(manager).should().writeInternal(same(event3));
+        verify(manager, times(4)).isBuffered();
+        then(manager).should().writeInternal(same(event1copy), (Serializable) isNull());
+        then(manager).should().buffer(event1);
+        then(manager).should().writeInternal(same(event2copy), (Serializable) isNull());
+        then(manager).should().buffer(event2);
+        then(manager).should().writeInternal(same(event3copy), (Serializable) isNull());
+        then(manager).should().buffer(event3);
         then(manager).should().commitAndClose();
         then(manager).shouldHaveNoMoreInteractions();
     }
@@ -175,18 +217,30 @@ public class AbstractDatabaseManagerTest {
         final LogEvent event2 = mock(LogEvent.class);
         final LogEvent event3 = mock(LogEvent.class);
 
+        final LogEvent event1copy = mock(LogEvent.class);
+        final LogEvent event2copy = mock(LogEvent.class);
+        final LogEvent event3copy = mock(LogEvent.class);
+
+        when(event1.toImmutable()).thenReturn(event1copy);
+        when(event2.toImmutable()).thenReturn(event2copy);
+        when(event3.toImmutable()).thenReturn(event3copy);
+
         manager.startup();
         then(manager).should().startupInternal();
 
-        manager.write(event1);
-        manager.write(event2);
-        manager.write(event3);
+        manager.write(event1, null);
+        manager.write(event2, null);
+        manager.write(event3, null);
         manager.shutdown();
 
         then(manager).should().connectAndStart();
-        then(manager).should().writeInternal(same(event1));
-        then(manager).should().writeInternal(same(event2));
-        then(manager).should().writeInternal(same(event3));
+        verify(manager, times(4)).isBuffered();
+        then(manager).should().writeInternal(same(event1copy), (Serializable) isNull());
+        then(manager).should().buffer(event1);
+        then(manager).should().writeInternal(same(event2copy), (Serializable) isNull());
+        then(manager).should().buffer(event2);
+        then(manager).should().writeInternal(same(event3copy), (Serializable) isNull());
+        then(manager).should().buffer(event3);
         then(manager).should().commitAndClose();
         then(manager).should().shutdownInternal();
         then(manager).shouldHaveNoMoreInteractions();
@@ -212,6 +266,7 @@ public class AbstractDatabaseManagerTest {
     }
 
     @Test
+  <<<<<<< LOG4J2-1949
     public void testOnBeforeFailoverAppenderStopExceptionWithBuffer() throws Exception {
         int bufferSize = 10;
         setUp("name", bufferSize);
@@ -297,31 +352,50 @@ public class AbstractDatabaseManagerTest {
     
     // this stub is provided because mocking constructors is hard
     private static class StubDatabaseManager extends AbstractDatabaseManager {
+  =======
+    public void testStartupShutdown01() throws Exception {
+        setUp("testName01", 0);
+  >>>>>>> new-iso-date-time-formats
 
-        protected StubDatabaseManager(final String name, final int bufferSize) {
-            super(name, bufferSize);
-        }
+        assertEquals("The name is not correct.", "testName01", manager.getName());
+        assertFalse("The manager should not have started.", manager.isRunning());
 
-        @Override
-        protected void startupInternal() throws Exception {
-        }
+        manager.startup();
+        then(manager).should().startupInternal();
+        assertTrue("The manager should be running now.", manager.isRunning());
 
-        @Override
-        protected boolean shutdownInternal() throws Exception {
-            return true;
-        }
+        manager.shutdown();
+        then(manager).should().shutdownInternal();
+        assertFalse("The manager should not be running anymore.", manager.isRunning());
+    }
 
-        @Override
-        protected void connectAndStart() {
-        }
+    @Test
+    public void testStartupShutdown02() throws Exception {
+        setUp("anotherName02", 0);
 
-        @Override
-        protected void writeInternal(final LogEvent event) {
-        }
+        assertEquals("The name is not correct.", "anotherName02", manager.getName());
+        assertFalse("The manager should not have started.", manager.isRunning());
 
-        @Override
-        protected boolean commitAndClose() {
-            return true;
-        }
+        manager.startup();
+        then(manager).should().startupInternal();
+        assertTrue("The manager should be running now.", manager.isRunning());
+
+        manager.releaseSub(-1, null);
+        then(manager).should().shutdownInternal();
+        assertFalse("The manager should not be running anymore.", manager.isRunning());
+    }
+
+    @Test
+    public void testToString01() {
+        setUp("someName01", 0);
+
+        assertEquals("The string is not correct.", "someName01", manager.toString());
+    }
+
+    @Test
+    public void testToString02() {
+        setUp("bufferSize=12, anotherKey02=coolValue02", 12);
+
+        assertEquals("The string is not correct.", "bufferSize=12, anotherKey02=coolValue02", manager.toString());
     }
 }

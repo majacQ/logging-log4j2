@@ -17,6 +17,8 @@
 
 package org.apache.logging.log4j.core.util.datetime;
 
+import org.apache.logging.log4j.core.time.Instant;
+
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Objects;
@@ -29,68 +31,119 @@ import java.util.concurrent.TimeUnit;
  * <p>
  * Related benchmarks: /log4j-perf/src/main/java/org/apache/logging/log4j/perf/jmh/TimeFormatBenchmark.java and
  * /log4j-perf/src/main/java/org/apache/logging/log4j/perf/jmh/ThreadsafeDateFormatBenchmark.java
+ * </p>
  */
 public class FixedDateFormat {
+
     /**
      * Enumeration over the supported date/time format patterns.
      * <p>
      * Package protected for unit tests.
+     * </p>
      */
     public enum FixedFormat {
+        
         /**
          * ABSOLUTE time format: {@code "HH:mm:ss,SSS"}.
          */
-        ABSOLUTE("HH:mm:ss,SSS", null, 0, ':', 1, ',', 1),
+        ABSOLUTE("HH:mm:ss,SSS", null, 0, ':', 1, ',', 1, 3, null),
+        /**
+         * ABSOLUTE time format with microsecond precision: {@code "HH:mm:ss,nnnnnn"}.
+         */
+        ABSOLUTE_MICROS("HH:mm:ss,nnnnnn", null, 0, ':', 1, ',', 1, 6, null),
+        /**
+         * ABSOLUTE time format with nanosecond precision: {@code "HH:mm:ss,nnnnnnnnn"}.
+         */
+        ABSOLUTE_NANOS("HH:mm:ss,nnnnnnnnn", null, 0, ':', 1, ',', 1, 9, null),
 
         /**
          * ABSOLUTE time format variation with period separator: {@code "HH:mm:ss.SSS"}.
          */
-        ABSOLUTE_PERIOD("HH:mm:ss.SSS", null, 0, ':', 1, '.', 1),
+        ABSOLUTE_PERIOD("HH:mm:ss.SSS", null, 0, ':', 1, '.', 1, 3, null),
 
         /**
          * COMPACT time format: {@code "yyyyMMddHHmmssSSS"}.
          */
-        COMPACT("yyyyMMddHHmmssSSS", "yyyyMMdd", 0, ' ', 0, ' ', 0),
+        COMPACT("yyyyMMddHHmmssSSS", "yyyyMMdd", 0, ' ', 0, ' ', 0, 3, null),
 
         /**
          * DATE_AND_TIME time format: {@code "dd MMM yyyy HH:mm:ss,SSS"}.
          */
-        DATE("dd MMM yyyy HH:mm:ss,SSS", "dd MMM yyyy ", 0, ':', 1, ',', 1),
+        DATE("dd MMM yyyy HH:mm:ss,SSS", "dd MMM yyyy ", 0, ':', 1, ',', 1, 3, null),
 
         /**
          * DATE_AND_TIME time format variation with period separator: {@code "dd MMM yyyy HH:mm:ss.SSS"}.
          */
-        DATE_PERIOD("dd MMM yyyy HH:mm:ss.SSS", "dd MMM yyyy ", 0, ':', 1, '.', 1),
+        DATE_PERIOD("dd MMM yyyy HH:mm:ss.SSS", "dd MMM yyyy ", 0, ':', 1, '.', 1, 3, null),
 
         /**
          * DEFAULT time format: {@code "yyyy-MM-dd HH:mm:ss,SSS"}.
          */
-        DEFAULT("yyyy-MM-dd HH:mm:ss,SSS", "yyyy-MM-dd ", 0, ':', 1, ',', 1),
+        DEFAULT("yyyy-MM-dd HH:mm:ss,SSS", "yyyy-MM-dd ", 0, ':', 1, ',', 1, 3, null),
+        /**
+         * DEFAULT time format with microsecond precision: {@code "yyyy-MM-dd HH:mm:ss,nnnnnn"}.
+         */
+        DEFAULT_MICROS("yyyy-MM-dd HH:mm:ss,nnnnnn", "yyyy-MM-dd ", 0, ':', 1, ',', 1, 6, null),
+        /**
+         * DEFAULT time format with nanosecond precision: {@code "yyyy-MM-dd HH:mm:ss,nnnnnnnnn"}.
+         */
+        DEFAULT_NANOS("yyyy-MM-dd HH:mm:ss,nnnnnnnnn", "yyyy-MM-dd ", 0, ':', 1, ',', 1, 9, null),
 
         /**
          * DEFAULT time format variation with period separator: {@code "yyyy-MM-dd HH:mm:ss.SSS"}.
          */
-        DEFAULT_PERIOD("yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd ", 0, ':', 1, '.', 1),
+        DEFAULT_PERIOD("yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd ", 0, ':', 1, '.', 1, 3, null),
 
         /**
          * ISO8601_BASIC time format: {@code "yyyyMMdd'T'HHmmss,SSS"}.
          */
-        ISO8601_BASIC("yyyyMMdd'T'HHmmss,SSS", "yyyyMMdd'T'", 2, ' ', 0, ',', 1),
+        ISO8601_BASIC("yyyyMMdd'T'HHmmss,SSS", "yyyyMMdd'T'", 2, ' ', 0, ',', 1, 3, null),
 
         /**
          * ISO8601_BASIC time format: {@code "yyyyMMdd'T'HHmmss.SSS"}.
          */
-        ISO8601_BASIC_PERIOD("yyyyMMdd'T'HHmmss.SSS", "yyyyMMdd'T'", 2, ' ', 0, '.', 1),
+        ISO8601_BASIC_PERIOD("yyyyMMdd'T'HHmmss.SSS", "yyyyMMdd'T'", 2, ' ', 0, '.', 1, 3, null),
 
         /**
          * ISO8601 time format: {@code "yyyy-MM-dd'T'HH:mm:ss,SSS"}.
          */
-        ISO8601("yyyy-MM-dd'T'HH:mm:ss,SSS", "yyyy-MM-dd'T'", 2, ':', 1, ',', 1),
+        ISO8601("yyyy-MM-dd'T'HH:mm:ss,SSS", "yyyy-MM-dd'T'", 2, ':', 1, ',', 1, 3, null),
+
+// TODO Do we even want a format without seconds?
+//        /**
+//         * ISO8601_OFFSET_DATE_TIME time format: {@code "yyyy-MM-dd'T'HH:mmXXX"}.
+//         */
+//        // Would need work in org.apache.logging.log4j.core.util.datetime.FixedDateFormat.writeTime(int, char[], int)
+//        ISO8601_OFFSET_DATE_TIME("yyyy-MM-dd'T'HH:mmXXX", "yyyy-MM-dd'T'", 2, ':', 1, ' ', 0, 0, FixedTimeZoneFormat.XXX),
+
+        /**
+         * ISO8601_OFFSET_DATE_TIME_X time format: {@code "yyyy-MM-dd'T'HH:mm:ss,SSSX"}.
+         */
+        ISO8601_OFFSET_DATE_TIME_X("yyyy-MM-dd'T'HH:mm:ss,SSSX", "yyyy-MM-dd'T'", 2, ':', 1, ',', 1, 3, FixedTimeZoneFormat.X),
+
+        /**
+         * ISO8601_OFFSET_DATE_TIME_XX time format: {@code "yyyy-MM-dd'T'HH:mm:ss,SSSXX"}.
+         */
+        ISO8601_OFFSET_DATE_TIME_XX("yyyy-MM-dd'T'HH:mm:ss,SSSXX", "yyyy-MM-dd'T'", 2, ':', 1, ',', 1, 3, FixedTimeZoneFormat.XX),
+
+        /**
+         * ISO8601_OFFSET_DATE_TIME_XXX time format: {@code "yyyy-MM-dd'T'HH:mm:ss,SSSXXX"}.
+         */
+        ISO8601_OFFSET_DATE_TIME_XXX("yyyy-MM-dd'T'HH:mm:ss,SSSXXX", "yyyy-MM-dd'T'", 2, ':', 1, ',', 1, 3, FixedTimeZoneFormat.XXX),
+
+        /**
+         * ISO8601_OFFSET_DATE_TIME_Z time format: {@code "yyyy-MM-dd'T'HH:mm:ss,SSSZ"}.
+         */
+        ISO8601_OFFSET_DATE_TIME_Z("yyyy-MM-dd'T'HH:mm:ss,SSSZ", "yyyy-MM-dd'T'", 2, ':', 1, ',', 1, 3, FixedTimeZoneFormat.Z),
 
         /**
          * ISO8601 time format: {@code "yyyy-MM-dd'T'HH:mm:ss.SSS"}.
          */
-        ISO8601_PERIOD("yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'", 2, ':', 1, '.', 1);
+        ISO8601_PERIOD("yyyy-MM-dd'T'HH:mm:ss.SSS", "yyyy-MM-dd'T'", 2, ':', 1, '.', 1, 3, null);
+
+        private static final String DEFAULT_SECOND_FRACTION_PATTERN = "SSS";
+        private static final int MILLI_FRACTION_DIGITS = DEFAULT_SECOND_FRACTION_PATTERN.length();
+        private static final char SECOND_FRACTION_PATTERN = 'n';
 
         private final String pattern;
         private final String datePattern;
@@ -99,9 +152,12 @@ public class FixedDateFormat {
         private final int timeSeparatorLength;
         private final char millisSeparatorChar;
         private final int millisSeparatorLength;
+        private final int secondFractionDigits;
+        private final FixedTimeZoneFormat timeZoneFormat;
 
         FixedFormat(final String pattern, final String datePattern, final int escapeCount, final char timeSeparator,
-                    final int timeSepLength, final char millisSeparator, final int millisSepLength) {
+                    final int timeSepLength, final char millisSeparator, final int millisSepLength,
+                    final int secondFractionDigits, final FixedTimeZoneFormat timeZoneFormat) {
             this.timeSeparatorChar = timeSeparator;
             this.timeSeparatorLength = timeSepLength;
             this.millisSeparatorChar = millisSeparator;
@@ -109,6 +165,8 @@ public class FixedDateFormat {
             this.pattern = Objects.requireNonNull(pattern);
             this.datePattern = datePattern; // may be null
             this.escapeCount = escapeCount;
+            this.secondFractionDigits = secondFractionDigits;
+            this.timeZoneFormat = timeZoneFormat;
         }
 
         /**
@@ -142,6 +200,45 @@ public class FixedDateFormat {
                 }
             }
             return null;
+        }
+
+        static FixedFormat lookupIgnoringNanos(final String pattern) {
+            int[] nanoRange = nanoRange(pattern);
+            final int nanoStart = nanoRange[0];
+            final int nanoEnd = nanoRange[1];
+            if (nanoStart > 0) {
+                final String subPattern = pattern.substring(0, nanoStart) + DEFAULT_SECOND_FRACTION_PATTERN
+                        + pattern.substring(nanoEnd, pattern.length());
+                for (final FixedFormat type : FixedFormat.values()) {
+                    if (type.getPattern().equals(subPattern)) {
+                        return type;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private final static int[] EMPTY_RANGE = { -1, -1 };
+        
+        /**
+         * 
+         * @param pattern
+         * @return int[0] start index inclusive; int[1] end index exclusive
+         */
+        private static int[] nanoRange(final String pattern) {
+            final int indexStart = pattern.indexOf(SECOND_FRACTION_PATTERN);
+            int indexEnd = -1;
+            if (indexStart >= 0) {
+                indexEnd = pattern.indexOf('Z', indexStart);
+                indexEnd = indexEnd < 0 ? pattern.indexOf('X', indexStart) : indexEnd;
+                indexEnd = indexEnd < 0 ? pattern.length() : indexEnd; 
+                for (int i = indexStart + 1; i < indexEnd; i++) {
+                    if (pattern.charAt(i) != SECOND_FRACTION_PATTERN) {
+                        return EMPTY_RANGE;
+                    }
+                }
+            }
+            return new int [] {indexStart, indexEnd};
         }
 
         /**
@@ -182,16 +279,120 @@ public class FixedDateFormat {
         public FastDateFormat getFastDateFormat(final TimeZone tz) {
             return getDatePattern() == null ? null : FastDateFormat.getInstance(getDatePattern(), tz);
         }
+
+        /**
+         * Returns the number of digits specifying the fraction of the second to show
+         * @return 3 for millisecond precision, 6 for microsecond precision or 9 for nanosecond precision
+         */
+        public int getSecondFractionDigits() {
+            return secondFractionDigits;
+        }
+
+        /**
+         * Returns the optional time zone format.
+         * @return the optional time zone format, may be null.
+         */
+        public FixedTimeZoneFormat getTimeZoneFormat() {
+            return timeZoneFormat;
+        }
+    }
+
+    private static final char NONE = (char) 0;
+
+    /**
+     * Fixed time zone formats. The enum names are symbols from
+     * https://docs.oracle.com/javase/8/docs/api/java/time/format/DateTimeFormatter.html.
+     */
+    public enum FixedTimeZoneFormat {
+
+        /**
+         * Offset like {@code -07}
+         */
+        X(NONE, false, 3),
+
+        /**
+         * Offset like {@code -0700}.
+         * Same as Z.
+         */
+        XX(NONE, true, 5), 
+        
+        /** 
+         * Offset like {@code -07:00}
+         */
+        XXX(':', true, 6), 
+        
+        /**
+         * Offset like {@code -0700}.
+         * Same as XX.
+         */
+        Z(NONE, true, 5); 
+
+        private FixedTimeZoneFormat() {
+            this(NONE, true, 4);
+        }
+
+        private FixedTimeZoneFormat(char timeSeparatorChar, boolean minutes, int length) {
+            this.timeSeparatorChar = timeSeparatorChar;
+            this.timeSeparatorCharLen = timeSeparatorChar != NONE ? 1 : 0;
+            this.useMinutes = minutes;
+            this.length = length;
+        }
+
+        private final char timeSeparatorChar;
+        private final int timeSeparatorCharLen;
+        private final boolean useMinutes;
+        // The length includes 1 for the leading sign 
+        private final int length;
+
+        public int getLength() {
+            return length;
+        }
+
+        // Profiling showed this method is important to log4j performance. Modify with care!
+        // 262 bytes (will be inlined when hot enough: <= -XX:FreqInlineSize=325 bytes on Linux)
+        private int write(int offset, final char[] buffer, int pos) {
+            // This method duplicates part of writeTime()
+
+            buffer[pos++] = offset < 0 ? '-' : '+';
+            final int absOffset = Math.abs(offset);
+            final int hours = absOffset / 3600000;
+            int ms = absOffset - (3600000 * hours);
+
+            // Hour
+            int temp = hours / 10;
+            buffer[pos++] = ((char) (temp + '0'));
+
+            // Do subtract to get remainder instead of doing % 10
+            buffer[pos++] = ((char) (hours - 10 * temp + '0'));
+
+            // Minute
+            if (useMinutes) {
+                buffer[pos] = timeSeparatorChar;
+                pos += timeSeparatorCharLen;
+                final int minutes = ms / 60000;
+                ms -= 60000 * minutes;
+
+                temp = minutes / 10;
+                buffer[pos++] = ((char) (temp + '0'));
+
+                // Do subtract to get remainder instead of doing % 10
+                buffer[pos++] = ((char) (minutes - 10 * temp + '0'));
+            }
+            return pos;
+        }
+
     }
 
     private final FixedFormat fixedFormat;
     private final TimeZone timeZone;
     private final int length;
+    private final int secondFractionDigits;
     private final FastDateFormat fastDateFormat; // may be null
     private final char timeSeparatorChar;
     private final char millisSeparatorChar;
     private final int timeSeparatorLength;
     private final int millisSeparatorLength;
+    private final FixedTimeZoneFormat timeZoneFormat;
 
     private volatile long midnightToday = 0;
     private volatile long midnightTomorrow = 0;
@@ -212,15 +413,32 @@ public class FixedDateFormat {
      * Package protected for unit tests.
      *
      * @param fixedFormat the fixed format
+     * @param tz time zone
      */
     FixedDateFormat(final FixedFormat fixedFormat, final TimeZone tz) {
+        this(fixedFormat, tz, fixedFormat.getSecondFractionDigits());
+    }
+
+    /**
+     * Constructs a FixedDateFormat for the specified fixed format.
+     * <p>
+     * Package protected for unit tests.
+     * </p>
+     *
+     * @param fixedFormat the fixed format
+     * @param tz time zone
+     * @param secondFractionDigits the number of digits specifying the fraction of the second to show
+     */
+    FixedDateFormat(final FixedFormat fixedFormat, final TimeZone tz, final int secondFractionDigits) {
         this.fixedFormat = Objects.requireNonNull(fixedFormat);
         this.timeZone = Objects.requireNonNull(tz);
         this.timeSeparatorChar = fixedFormat.timeSeparatorChar;
         this.timeSeparatorLength = fixedFormat.timeSeparatorLength;
         this.millisSeparatorChar = fixedFormat.millisSeparatorChar;
         this.millisSeparatorLength = fixedFormat.millisSeparatorLength;
+        this.timeZoneFormat = fixedFormat.timeZoneFormat; // may be null
         this.length = fixedFormat.getLength();
+        this.secondFractionDigits = Math.max(1, Math.min(9, secondFractionDigits));
         this.fastDateFormat = fixedFormat.getFastDateFormat(tz);
     }
 
@@ -230,18 +448,25 @@ public class FixedDateFormat {
         }
         final TimeZone tz;
         if (options.length > 1) {
-            if (options[1] != null){
+            if (options[1] != null) {
                 tz = TimeZone.getTimeZone(options[1]);
             } else {
                 tz = TimeZone.getDefault();
             }
-        } else if (options.length > 2) {
-            return null;
         } else {
             tz = TimeZone.getDefault();
         }
 
-        final FixedFormat type = FixedFormat.lookup(options[0]);
+        final String option0 = options[0];
+        final FixedFormat withNanos = FixedFormat.lookupIgnoringNanos(option0);
+        if (withNanos != null) {
+            final int[] nanoRange = FixedFormat.nanoRange(option0);
+            final int nanoStart = nanoRange[0];
+            final int nanoEnd = nanoRange[1];
+            final int secondFractionDigits = nanoEnd - nanoStart;
+            return new FixedDateFormat(withNanos, tz, secondFractionDigits);
+        }
+        final FixedFormat type = FixedFormat.lookup(option0);
         return type == null ? null : new FixedDateFormat(type, tz);
     }
 
@@ -280,7 +505,6 @@ public class FixedDateFormat {
      *
      * @return the time zone
      */
-
     public TimeZone getTimeZone() {
         return timeZone;
     }
@@ -351,25 +575,44 @@ public class FixedDateFormat {
         }
     }
 
+    public String formatInstant(final Instant instant) {
+        final char[] result = new char[length << 1]; // double size for locales with lengthy DateFormatSymbols
+        final int written = formatInstant(instant, result, 0);
+        return new String(result, 0, written);
+    }
+
+    public int formatInstant(final Instant instant, final char[] buffer, final int startPos) {
+        final long epochMillisecond = instant.getEpochMillisecond();
+        int result = format(epochMillisecond, buffer, startPos);
+        result -= digitsLessThanThree();
+        int pos = formatNanoOfMillisecond(instant.getNanoOfMillisecond(), buffer, startPos + result);
+        return writeTimeZone(epochMillisecond, buffer, pos);
+    }
+
+    private int digitsLessThanThree() { // in case user specified only 1 or 2 'n' format characters
+        return Math.max(0, FixedFormat.MILLI_FRACTION_DIGITS - secondFractionDigits);
+    }
+
     // Profiling showed this method is important to log4j performance. Modify with care!
     // 28 bytes (allows immediate JVM inlining: <= -XX:MaxInlineSize=35 bytes)
-    public String format(final long time) {
+    public String format(final long epochMillis) {
         final char[] result = new char[length << 1]; // double size for locales with lengthy DateFormatSymbols
-        final int written = format(time, result, 0);
+        final int written = format(epochMillis, result, 0);
         return new String(result, 0, written);
     }
 
     // Profiling showed this method is important to log4j performance. Modify with care!
     // 31 bytes (allows immediate JVM inlining: <= -XX:MaxInlineSize=35 bytes)
-    public int format(final long time, final char[] buffer, final int startPos) {
+    public int format(final long epochMillis, final char[] buffer, final int startPos) {
         // Calculate values by getting the ms values first and do then
         // calculate the hour minute and second values divisions.
 
         // Get daytime in ms: this does fit into an int
         // int ms = (int) (time % 86400000);
-        final int ms = (int) (millisSinceMidnight(time));
+        final int ms = (int) (millisSinceMidnight(epochMillis));
         writeDate(buffer, startPos);
-        return writeTime(ms, buffer, startPos + dateLength) - startPos;
+        int pos = writeTime(ms, buffer, startPos + dateLength);
+        return pos - startPos;
     }
 
     // Profiling showed this method is important to log4j performance. Modify with care!
@@ -428,6 +671,34 @@ public class FixedDateFormat {
 
         ms -= 10 * temp;
         buffer[pos++] = ((char) (ms + '0'));
+        return pos;
+    }
+
+    private int writeTimeZone(final long epochMillis, final char[] buffer, int pos) {
+        if (timeZoneFormat != null) {
+            pos = timeZoneFormat.write(timeZone.getOffset(epochMillis), buffer, pos);
+        }
+        return pos;
+    }
+
+    static int[] TABLE = {
+            100000, // 0
+            10000, // 1
+            1000, // 2
+            100, // 3
+            10, // 4
+            1, // 5
+    };
+
+    private int formatNanoOfMillisecond(final int nanoOfMillisecond, final char[] buffer, int pos) {
+        int temp;
+        int remain = nanoOfMillisecond;
+        for (int i = 0; i < secondFractionDigits - FixedFormat.MILLI_FRACTION_DIGITS; i++) {
+            final int divisor = TABLE[i];
+            temp = remain / divisor;
+            buffer[pos++] = ((char) (temp + '0'));
+            remain -= divisor * temp; // equivalent of remain % 10
+        }
         return pos;
     }
 

@@ -17,8 +17,8 @@
 
 package org.apache.logging.log4j.core.config;
 
+import org.apache.logging.log4j.core.util.Loader;
 import org.apache.logging.log4j.status.StatusLogger;
-import org.apache.logging.log4j.util.LoaderUtil;
 import org.apache.logging.log4j.util.PropertiesUtil;
 
 /**
@@ -39,7 +39,7 @@ public final class ReliabilityStrategyFactory {
      * <p>
      * Users may also use this system property to specify the fully qualified class name of a class that implements the
      * {@code ReliabilityStrategy} and has a constructor that accepts a single {@code LoggerConfig} argument.
-     * 
+     *
      * @param loggerConfig the LoggerConfig the resulting {@code ReliabilityStrategy} is associated with
      * @return a ReliabilityStrategy that helps the specified LoggerConfig to log events reliably during or after a
      *         configuration change
@@ -58,7 +58,7 @@ public final class ReliabilityStrategyFactory {
             return new LockingReliabilityStrategy(loggerConfig);
         }
         try {
-            final Class<? extends ReliabilityStrategy> cls = LoaderUtil.loadClass(strategy).asSubclass(
+            final Class<? extends ReliabilityStrategy> cls = Loader.loadClass(strategy).asSubclass(
                 ReliabilityStrategy.class);
             return cls.getConstructor(LoggerConfig.class).newInstance(loggerConfig);
         } catch (final Exception dynamicFailed) {

@@ -17,6 +17,7 @@
 package org.apache.logging.log4j.core.net.ssl;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 import org.apache.logging.log4j.status.StatusLogger;
 
@@ -27,11 +28,35 @@ public class StoreConfiguration<T> {
     protected static final StatusLogger LOGGER = StatusLogger.getLogger();
 
     private String location;
-    private char[] password;
+    private PasswordProvider passwordProvider;
 
-    public StoreConfiguration(final String location, final String password) {
+    public StoreConfiguration(final String location, final PasswordProvider passwordProvider) {
         this.location = location;
-        this.password = password == null ? null : password.toCharArray();
+        this.passwordProvider = Objects.requireNonNull(passwordProvider, "passwordProvider");
+    }
+
+    /**
+     * @deprecated Use {@link #StoreConfiguration(String, PasswordProvider)}
+     */
+    @Deprecated
+    public StoreConfiguration(final String location, final char[] password) {
+        this(location, new MemoryPasswordProvider(password));
+    }
+
+    /**
+     * @deprecated Use {@link #StoreConfiguration(String, PasswordProvider)}
+     */
+    @Deprecated
+    public StoreConfiguration(final String location, final String password) {
+        this(location, new MemoryPasswordProvider(password == null ? null : password.toCharArray()));
+    }
+
+    /**
+     * Clears the secret fields in this object.
+     */
+    public void clearSecrets() {
+        this.location = null;
+        this.passwordProvider = null;
     }
 
     public String getLocation() {
@@ -42,20 +67,34 @@ public class StoreConfiguration<T> {
         this.location = location;
     }
 
+    /**
+     *
+     * @deprecated Use getPasswordAsCharArray()
+     */
+    @Deprecated
     public String getPassword() {
-        return String.valueOf(this.password);
+        return String.valueOf(this.passwordProvider.getPassword());
     }
 
     public char[] getPasswordAsCharArray() {
-        return this.password;
+        return this.passwordProvider.getPassword();
     }
 
-    public void setPassword(final String password) {
-        this.password = password == null ? null : password.toCharArray();
+    public void setPassword(final char[] password) {
+        this.passwordProvider = new MemoryPasswordProvider(password);
     }
 
     /**
-     * @throws StoreConfigurationException May be thrown by subclasses 
+     *
+     * @deprecated Use getPasswordAsCharArray()
+     */
+    @Deprecated
+    public void setPassword(final String password) {
+        this.passwordProvider = new MemoryPasswordProvider(password == null ? null : password.toCharArray());
+    }
+
+    /**
+     * @throws StoreConfigurationException May be thrown by subclasses
      */
     protected T load() throws StoreConfigurationException {
         return null;
@@ -66,7 +105,7 @@ public class StoreConfiguration<T> {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((location == null) ? 0 : location.hashCode());
-        result = prime * result + Arrays.hashCode(password);
+        result = prime * result + Arrays.hashCode(passwordProvider.getPassword());
         return result;
     }
 
@@ -81,7 +120,7 @@ public class StoreConfiguration<T> {
         if (getClass() != obj.getClass()) {
             return false;
         }
-        final StoreConfiguration other = (StoreConfiguration) obj;
+        final StoreConfiguration<?> other = (StoreConfiguration<?>) obj;
         if (location == null) {
             if (other.location != null) {
                 return false;
@@ -89,9 +128,9 @@ public class StoreConfiguration<T> {
         } else if (!location.equals(other.location)) {
             return false;
         }
-        if (!Arrays.equals(password, other.password)) {
+        if (!Arrays.equals(passwordProvider.getPassword(), other.passwordProvider.getPassword())) {
             return false;
         }
         return true;
-    }    
+    }
 }

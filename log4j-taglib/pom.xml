@@ -20,7 +20,7 @@
   <parent>
     <groupId>org.apache.logging.log4j</groupId>
     <artifactId>log4j</artifactId>
-    <version>2.9-SNAPSHOT</version>
+    <version>2.11.2-SNAPSHOT</version>
     <relativePath>../</relativePath>
   </parent>
   <artifactId>log4j-taglib</artifactId>
@@ -31,6 +31,7 @@
     <log4jParentDir>${basedir}/..</log4jParentDir>
     <docLabel>Log4j Tag Library Documentation</docLabel>
     <projectDir>/taglib</projectDir>
+    <module.name>org.apache.logging.log4j.taglib</module.name>
   </properties>
   <dependencies>
     <dependency>
@@ -44,8 +45,8 @@
     </dependency>
     <dependency>
       <groupId>javax.servlet</groupId>
-      <artifactId>servlet-api</artifactId>
-      <version>2.5</version>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>3.0.1</version>
       <scope>provided</scope>
     </dependency>
     <dependency>

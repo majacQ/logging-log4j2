@@ -124,13 +124,14 @@ public class FileRenameAction extends AbstractAction {
                 } catch (final IOException exMove) {
                     LOGGER.error("Unable to move file {} to {}: {} {}", source.getAbsolutePath(),
                             destination.getAbsolutePath(), exMove.getClass().getName(), exMove.getMessage());
-                    final boolean result = source.renameTo(destination);
+                    boolean result = source.renameTo(destination);
                     if (!result) {
                         try {
                             Files.copy(Paths.get(source.getAbsolutePath()), Paths.get(destination.getAbsolutePath()),
                                     StandardCopyOption.REPLACE_EXISTING);
                             try {
                                 Files.delete(Paths.get(source.getAbsolutePath()));
+                                result = true;
                                 LOGGER.trace("Renamed file {} to {} using copy and delete",
                                         source.getAbsolutePath(), destination.getAbsolutePath());
                             } catch (final IOException exDelete) {
@@ -174,7 +175,7 @@ public class FileRenameAction extends AbstractAction {
 
     @Override
     public String toString() {
-        return FileRenameAction.class.getSimpleName() + '[' + source + " to " + destination //
+        return FileRenameAction.class.getSimpleName() + '[' + source + " to " + destination
                 + ", renameEmptyFiles=" + renameEmptyFiles + ']';
     }
 

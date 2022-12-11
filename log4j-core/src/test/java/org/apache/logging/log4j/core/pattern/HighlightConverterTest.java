@@ -19,7 +19,9 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.message.SimpleMessage;
+import org.junit.Assert;
 import org.junit.Test;
+
 
 import static org.junit.Assert.*;
 
@@ -53,6 +55,60 @@ public class HighlightConverterTest {
     }
 
     @Test
+    public void testLevelNamesBad() {
+        final String colorName = "red";
+        final String[] options = { "%-5level: %msg", PatternParser.NO_CONSOLE_NO_ANSI + "=false, "
+                + PatternParser.DISABLE_ANSI + "=false, " + "BAD_LEVEL_A=" + colorName + ", BAD_LEVEL_B=" + colorName };
+        final HighlightConverter converter = HighlightConverter.newInstance(null, options);
+        Assert.assertNotNull(converter);
+        Assert.assertNotNull(converter.getLevelStyle(Level.TRACE));
+        Assert.assertNotNull(converter.getLevelStyle(Level.DEBUG));
+    }
+
+    @Test
+    public void testLevelNamesGood() {
+        final String colorName = "red";
+        final String[] options = { "%-5level: %msg", PatternParser.NO_CONSOLE_NO_ANSI + "=false, "
+                + PatternParser.DISABLE_ANSI + "=false, " + "DEBUG=" + colorName + ", TRACE=" + colorName };
+        final HighlightConverter converter = HighlightConverter.newInstance(null, options);
+        Assert.assertNotNull(converter);
+        Assert.assertEquals(AnsiEscape.createSequence(colorName), converter.getLevelStyle(Level.TRACE));
+        Assert.assertEquals(AnsiEscape.createSequence(colorName), converter.getLevelStyle(Level.DEBUG));
+    }
+
+    @Test
+    public void testLevelNamesUnknown() {
+        String colorName = "blue";
+        final String[] options = { "%level", PatternParser.NO_CONSOLE_NO_ANSI + "=false, " + PatternParser.DISABLE_ANSI
+                + "=false, " + "DEBUG=" + colorName + ", CUSTOM1=" + colorName };
+        final HighlightConverter converter = HighlightConverter.newInstance(null, options);
+        Assert.assertNotNull(converter);
+        Assert.assertNotNull(converter.getLevelStyle(Level.INFO));
+        Assert.assertNotNull(converter.getLevelStyle(Level.DEBUG));
+        Assert.assertNotNull(converter.getLevelStyle(Level.forName("CUSTOM1", 412)));
+        Assert.assertNull(converter.getLevelStyle(Level.forName("CUSTOM2", 512)));
+
+        assertArrayEquals(new byte[] { 27, '[', '3', '4', 'm', 'D', 'E', 'B', 'U', 'G', 27, '[', 'm' },
+                toFormattedCharSeq(converter, Level.DEBUG).toString().getBytes());
+        assertArrayEquals(new byte[] { 27, '[', '3', '2', 'm', 'I', 'N', 'F', 'O', 27, '[', 'm' },
+                toFormattedCharSeq(converter, Level.INFO).toString().getBytes());
+        assertArrayEquals(new byte[] { 27, '[', '3', '4', 'm', 'C', 'U', 'S', 'T', 'O', 'M', '1', 27, '[', 'm' },
+                toFormattedCharSeq(converter, Level.forName("CUSTOM1", 412)).toString().getBytes());
+        assertArrayEquals(new byte[] { 'C', 'U', 'S', 'T', 'O', 'M', '2' },
+                toFormattedCharSeq(converter, Level.forName("CUSTOM2", 512)).toString().getBytes());
+    }    
+
+    @Test
+    public void testLevelNamesNone() {
+        final String[] options = { "%-5level: %msg",
+                PatternParser.NO_CONSOLE_NO_ANSI + "=false, " + PatternParser.DISABLE_ANSI + "=false" };
+        final HighlightConverter converter = HighlightConverter.newInstance(null, options);
+        Assert.assertNotNull(converter);
+        Assert.assertNotNull(converter.getLevelStyle(Level.TRACE));
+        Assert.assertNotNull(converter.getLevelStyle(Level.DEBUG));
+    }
+
+    @Test
     public void testNoAnsiEmpty() {
         final String[] options = {"", PatternParser.DISABLE_ANSI + "=true"};
         final HighlightConverter converter = HighlightConverter.newInstance(null, options);
@@ -74,5 +130,11 @@ public class HighlightConverterTest {
         final StringBuilder buffer = new StringBuilder();
         converter.format(event, buffer);
         assertEquals("INFO : message in a bottle", buffer.toString());
+    }
+
+    private CharSequence toFormattedCharSeq(final HighlightConverter converter, final Level level) {
+        final StringBuilder sb = new StringBuilder();
+        converter.format(Log4jLogEvent.newBuilder().setLevel(level).build(), sb);
+        return sb;
     }
 }

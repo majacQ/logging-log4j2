@@ -16,6 +16,7 @@
  */
 package org.apache.logging.log4j.core.layout;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -31,9 +32,11 @@ import org.apache.logging.log4j.core.config.ConfigurationFactory;
 import org.apache.logging.log4j.core.net.Facility;
 import org.apache.logging.log4j.core.util.KeyValuePair;
 import org.apache.logging.log4j.junit.ThreadContextRule;
+import org.apache.logging.log4j.message.StructuredDataCollectionMessage;
 import org.apache.logging.log4j.message.StructuredDataMessage;
 import org.apache.logging.log4j.status.StatusLogger;
 import org.apache.logging.log4j.test.appender.ListAppender;
+import org.apache.logging.log4j.util.ProcessIdUtil;
 import org.apache.logging.log4j.util.Strings;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -47,22 +50,30 @@ public class Rfc5424LayoutTest {
     LoggerContext ctx = LoggerContext.getContext();
     Logger root = ctx.getRootLogger();
 
-
-    private static final String line1 = "ATM - - [RequestContext@3692 loginId=\"JohnDoe\"] starting mdc pattern test";
-    private static final String line2 = "ATM - - [RequestContext@3692 loginId=\"JohnDoe\"] empty mdc";
-    private static final String line3 = "ATM - - [RequestContext@3692 loginId=\"JohnDoe\"] filled mdc";
+    private static final String PROCESSID = ProcessIdUtil.getProcessId();
+    private static final String line1 = String.format("ATM %s - [RequestContext@3692 loginId=\"JohnDoe\"] starting mdc pattern test", PROCESSID);
+    private static final String line2 = String.format("ATM %s - [RequestContext@3692 loginId=\"JohnDoe\"] empty mdc", PROCESSID);
+    private static final String line3 = String.format("ATM %s - [RequestContext@3692 loginId=\"JohnDoe\"] filled mdc", PROCESSID);
     private static final String line4 =
-        "ATM - Audit [Transfer@18060 Amount=\"200.00\" FromAccount=\"123457\" ToAccount=\"123456\"]" +
-        "[RequestContext@3692 ipAddress=\"192.168.0.120\" loginId=\"JohnDoe\"] Transfer Complete";
-    private static final String lineEscaped3 = "ATM - - [RequestContext@3692 escaped=\"Testing escaping #012 \\\" \\] \\\"\" loginId=\"JohnDoe\"] filled mdc";
+        String.format("ATM %s Audit [Transfer@18060 Amount=\"200.00\" FromAccount=\"123457\" ToAccount=\"123456\"]" +
+        "[RequestContext@3692 ipAddress=\"192.168.0.120\" loginId=\"JohnDoe\"] Transfer Complete", PROCESSID);
+    private static final String lineEscaped3 =
+            String.format("ATM %s - [RequestContext@3692 escaped=\"Testing escaping #012 \\\" \\] \\\"\" loginId=\"JohnDoe\"] filled mdc", PROCESSID);
     private static final String lineEscaped4 =
-        "ATM - Audit [Transfer@18060 Amount=\"200.00\" FromAccount=\"123457\" ToAccount=\"123456\"]" +
-        "[RequestContext@3692 escaped=\"Testing escaping #012 \\\" \\] \\\"\" ipAddress=\"192.168.0.120\" loginId=\"JohnDoe\"] Transfer Complete";
+        String.format("ATM %s Audit [Transfer@18060 Amount=\"200.00\" FromAccount=\"123457\" ToAccount=\"123456\"]" +
+        "[RequestContext@3692 escaped=\"Testing escaping #012 \\\" \\] \\\"\" ipAddress=\"192.168.0.120\" loginId=\"JohnDoe\"] Transfer Complete",
+            PROCESSID);
+    private static final String collectionLine1 = "[Transfer@18060 Amount=\"200.00\" FromAccount=\"123457\" " +
+            "ToAccount=\"123456\"]";
+    private static final String collectionLine2 = "[Extra@18060 Item1=\"Hello\" Item2=\"World\"]";
+    private static final String collectionLine3 = "[RequestContext@3692 ipAddress=\"192.168.0.120\" loginId=\"JohnDoe\"]";
+    private static final String collectionEndOfLine = "Transfer Complete";
+
 
     static ConfigurationFactory cf = new BasicConfigurationFactory();
 
     @Rule
-    public final ThreadContextRule threadContextRule = new ThreadContextRule(); 
+    public final ThreadContextRule threadContextRule = new ThreadContextRule();
 
     @BeforeClass
     public static void setupClass() {
@@ -148,6 +159,78 @@ public class Rfc5424LayoutTest {
             list = appender.getMessages();
             assertTrue("No messages expected, found " + list.size(), list.isEmpty());
         } finally {
+            ThreadContext.clearMap();
+            root.removeAppender(appender);
+            appender.stop();
+        }
+    }
+
+    /**
+     * Test case for MDC conversion pattern.
+     */
+    @Test
+    public void testCollection() throws Exception {
+        for (final Appender appender : root.getAppenders().values()) {
+            root.removeAppender(appender);
+        }
+        // set up appender
+        final AbstractStringLayout layout = Rfc5424Layout.createLayout(Facility.LOCAL0, "Event", 3692, true, "RequestContext",
+                null, null, true, null, "ATM", null, "key1, key2, locale", null, "loginId", null, true, null, null);
+        final ListAppender appender = new ListAppender("List", null, layout, true, false);
+
+        appender.start();
+
+        // set appender on root and set level to debug
+        root.addAppender(appender);
+        root.setLevel(Level.DEBUG);
+
+        ThreadContext.put("loginId", "JohnDoe");
+        ThreadContext.put("ipAddress", "192.168.0.120");
+        ThreadContext.put("locale", Locale.US.getDisplayName());
+        try {
+            final StructuredDataMessage msg = new StructuredDataMessage("Transfer@18060", "Transfer Complete", "Audit");
+            msg.put("ToAccount", "123456");
+            msg.put("FromAccount", "123457");
+            msg.put("Amount", "200.00");
+            final StructuredDataMessage msg2 = new StructuredDataMessage("Extra@18060", null, "Audit");
+            msg2.put("Item1", "Hello");
+            msg2.put("Item2", "World");
+            final List<StructuredDataMessage> messages = new ArrayList<>();
+            messages.add(msg);
+            messages.add(msg2);
+            final StructuredDataCollectionMessage collectionMessage = new StructuredDataCollectionMessage(messages);
+
+            root.info(MarkerManager.getMarker("EVENT"), collectionMessage);
+
+            final List<String> list = appender.getMessages();
+            final String result = list.get(0);
+            assertTrue("Expected line to contain " + collectionLine1 + ", Actual " + result,
+                    result.contains(collectionLine1));
+            assertTrue("Expected line to contain " + collectionLine2 + ", Actual " + result,
+                    result.contains(collectionLine2));
+            assertTrue("Expected line to contain " + collectionLine3 + ", Actual " + result,
+                    result.contains(collectionLine3));
+            assertTrue("Expected line to end with: " + collectionEndOfLine + " Actual " + result,
+                    result.endsWith(collectionEndOfLine));
+
+            for (final String frame : list) {
+                int length = -1;
+                final int frameLength = frame.length();
+                final int firstSpacePosition = frame.indexOf(' ');
+                final String messageLength = frame.substring(0, firstSpacePosition);
+                try {
+                    length = Integer.parseInt(messageLength);
+                    // the ListAppender removes the ending newline, so we expect one less size
+                    assertEquals(frameLength, messageLength.length() + length);
+                }
+                catch (final NumberFormatException e) {
+                    assertTrue("Not a valid RFC 5425 frame", false);
+                }
+            }
+
+            appender.clear();
+        } finally {
+            ThreadContext.clearMap();
             root.removeAppender(appender);
             appender.stop();
         }
@@ -388,7 +471,7 @@ public class Rfc5424LayoutTest {
     public void testSubstituteStructuredData() {
         final String mdcId = "RequestContext";
 
-        final String expectedToContain = "ATM - MSG-ID - Message";
+        final String expectedToContain = String.format("ATM %s MSG-ID - Message", PROCESSID);
 
         for (final Appender appender : root.getAppenders().values()) {
             root.removeAppender(appender);

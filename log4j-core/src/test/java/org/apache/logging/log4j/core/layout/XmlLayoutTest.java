@@ -33,6 +33,8 @@ import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.ConfigurationFactory;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.jackson.Log4jXmlObjectMapper;
+import org.apache.logging.log4j.core.lookup.JavaLookup;
+import org.apache.logging.log4j.core.util.KeyValuePair;
 import org.apache.logging.log4j.junit.ThreadContextRule;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.apache.logging.log4j.spi.AbstractLogger;
@@ -59,7 +61,7 @@ public class XmlLayoutTest {
     private static final String markerTag = "<Marker name=\"EVENT\"/>";
 
     @Rule
-    public final ThreadContextRule threadContextRule = new ThreadContextRule(); 
+    public final ThreadContextRule threadContextRule = new ThreadContextRule();
 
     @AfterClass
     public static void cleanupClass() {
@@ -163,7 +165,10 @@ public class XmlLayoutTest {
         }
         //
         // make sure the names we want are used
-        this.checkAttributeName("timeMillis", compact, str);
+        //this.checkAttributeName("timeMillis", compact, str);
+        this.checkElementName("Instant", compact, str, true, false);
+        this.checkAttributeName("epochSecond", compact, str);
+        this.checkAttributeName("nanoOfSecond", compact, str);
         this.checkAttributeName("thread", compact, str); // and not threadName
         this.checkAttributeName("level", compact, str);
         this.checkAttributeName("loggerName", compact, str);
@@ -305,6 +310,23 @@ public class XmlLayoutTest {
     }
 
     @Test
+    public void testAdditionalFields() throws Exception {
+        final AbstractJacksonLayout layout = XmlLayout.newBuilder()
+                .setLocationInfo(false)
+                .setProperties(false)
+                .setIncludeStacktrace(false)
+                .setAdditionalFields(new KeyValuePair[] {
+                    new KeyValuePair("KEY1", "VALUE1"),
+                    new KeyValuePair("KEY2", "${java:runtime}"), })
+                .setCharset(StandardCharsets.UTF_8)
+                .setConfiguration(ctx.getConfiguration())
+                .build();
+        final String str = layout.toSerializable(LogEventFixtures.createLogEvent());
+        assertTrue(str, str.contains("<KEY1>VALUE1</KEY1>"));
+        assertTrue(str, str.contains("<KEY2>" + new JavaLookup().getRuntime() + "</KEY2>"));
+    }
+
+    @Test
     public void testLocationOffCompactOffMdcOff() throws Exception {
         this.testAllFeatures(false, false, false, true);
     }
@@ -341,5 +363,25 @@ public class XmlLayoutTest {
                 .build();
         // @formatter:off
         return layout.toSerializable(expected);
+    }
+
+    @Test
+    public void testIncludeNullDelimiterTrue() throws Exception {
+        final AbstractJacksonLayout layout = XmlLayout.newBuilder()
+                .setCompact(true)
+                .setIncludeNullDelimiter(true)
+                .build();
+        final String str = layout.toSerializable(LogEventFixtures.createLogEvent());
+        assertTrue(str.endsWith("\0"));
+    }
+
+    @Test
+    public void testIncludeNullDelimiterFalse() throws Exception {
+        final AbstractJacksonLayout layout = XmlLayout.newBuilder()
+                .setCompact(true)
+                .setIncludeNullDelimiter(false)
+                .build();
+        final String str = layout.toSerializable(LogEventFixtures.createLogEvent());
+        assertFalse(str.endsWith("\0"));
     }
 }

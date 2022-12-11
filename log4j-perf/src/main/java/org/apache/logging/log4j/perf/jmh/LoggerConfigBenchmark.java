@@ -29,6 +29,7 @@ import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.AppenderControl;
 import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.message.SimpleMessage;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -68,7 +69,7 @@ public class LoggerConfigBenchmark {
         private final AtomicInteger count = new AtomicInteger();
 
         protected SimpleListAppender() {
-            super("list", null, null);
+            super("list", null, null, true, Property.EMPTY_ARRAY);
         }
 
         @Override
@@ -163,7 +164,7 @@ public class LoggerConfigBenchmark {
             processLogEvent(event);
         }
     }
-    
+
     volatile LoggerConfigBenchmark loggerConfig = this;
 
     /**
@@ -185,7 +186,7 @@ public class LoggerConfigBenchmark {
 
     /**
      * Determine if the LogEvent should be processed or ignored.
-     * 
+     *
      * @param event The LogEvent.
      * @return true if the LogEvent should be processed.
      */

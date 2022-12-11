@@ -19,6 +19,7 @@ package org.apache.logging.log4j.core.net.ssl;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
+import java.util.Arrays;
 
 import javax.net.ssl.KeyManagerFactory;
 
@@ -36,21 +37,51 @@ public class KeyStoreConfiguration extends AbstractKeyStoreConfiguration {
     private final String keyManagerFactoryAlgorithm;
 
     /**
-     * 
+     *
      * @throws StoreConfigurationException Thrown if this instance cannot load the KeyStore.
      */
-    public KeyStoreConfiguration(final String location, final String password, final String keyStoreType,
-            final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
-        super(location, password, keyStoreType);
+    public KeyStoreConfiguration(final String location,
+                                 final PasswordProvider  passwordProvider,
+                                 final String keyStoreType,
+                                 final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
+        super(location, passwordProvider, keyStoreType);
         this.keyManagerFactoryAlgorithm = keyManagerFactoryAlgorithm == null ? KeyManagerFactory.getDefaultAlgorithm()
                 : keyManagerFactoryAlgorithm;
     }
 
     /**
+     *
+     * @throws StoreConfigurationException Thrown if this instance cannot load the KeyStore.
+     * @deprecated use {@link #KeyStoreConfiguration(String, PasswordProvider, String, String)} instead
+     */
+    @Deprecated
+    public KeyStoreConfiguration(final String location,
+                                 final char[] password,
+                                 final String keyStoreType,
+                                 final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
+        this(location, new MemoryPasswordProvider(password), keyStoreType, keyManagerFactoryAlgorithm);
+        if (password != null) {
+            Arrays.fill(password, '\0');
+        }
+    }
+
+    /**
+     *
+     * @throws StoreConfigurationException Thrown if this instance cannot load the KeyStore.
+     * @deprecated Use {@link #KeyStoreConfiguration(String, PasswordProvider, String, String)} instead
+     */
+    @Deprecated
+    public KeyStoreConfiguration(final String location, final String password, final String keyStoreType,
+            final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
+        this(location, new MemoryPasswordProvider(password == null ? null : password.toCharArray()), keyStoreType,
+                keyManagerFactoryAlgorithm);
+    }
+
+    /**
      * Creates a KeyStoreConfiguration.
-     * 
+     *
      * @param location
-     *        The location of the KeyStore.
+     *        The location of the KeyStore, a file path, URL or resource.
      * @param password
      *        The password to access the KeyStore.
      * @param keyStoreType
@@ -64,17 +95,85 @@ public class KeyStoreConfiguration extends AbstractKeyStoreConfiguration {
     public static KeyStoreConfiguration createKeyStoreConfiguration(
             // @formatter:off
             @PluginAttribute("location") final String location,
-            @PluginAttribute(value = "password", sensitive = true) final String password,
-            @PluginAttribute("type") final String keyStoreType, 
+            @PluginAttribute(value = "password", sensitive = true) final char[] password,
+            @PluginAttribute("passwordEnvironmentVariable") final String passwordEnvironmentVariable,
+            @PluginAttribute("passwordFile") final String passwordFile,
+            @PluginAttribute("type") final String keyStoreType,
             @PluginAttribute("keyManagerFactoryAlgorithm") final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
             // @formatter:on
-        return new KeyStoreConfiguration(location, password, keyStoreType, keyManagerFactoryAlgorithm);
+
+        if (password != null && passwordEnvironmentVariable != null && passwordFile != null) {
+            throw new StoreConfigurationException("You MUST set only one of 'password', 'passwordEnvironmentVariable' or 'passwordFile'.");
+        }
+        try {
+            // @formatter:off
+            final PasswordProvider provider = passwordFile != null
+                    ? new FilePasswordProvider(passwordFile)
+                    : passwordEnvironmentVariable != null
+                            ? new EnvironmentPasswordProvider(passwordEnvironmentVariable)
+                            // the default is memory char[] array, which may be null
+                            : new MemoryPasswordProvider(password);
+            // @formatter:on
+            if (password != null) {
+                Arrays.fill(password, '\0');
+            }
+            return new KeyStoreConfiguration(location, provider, keyStoreType, keyManagerFactoryAlgorithm);
+        } catch (final Exception ex) {
+            throw new StoreConfigurationException("Could not configure KeyStore", ex);
+        }
+    }
+
+    /**
+     * @deprecated use {@link #createKeyStoreConfiguration(String, char[], String, String, String, String)}
+     */
+    @Deprecated
+    public static KeyStoreConfiguration createKeyStoreConfiguration(
+            // @formatter:off
+            final String location,
+            final char[] password,
+            final String keyStoreType,
+            final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
+            // @formatter:on
+        return createKeyStoreConfiguration(location, password, null, null, keyStoreType, keyManagerFactoryAlgorithm);
+    }
+
+    /**
+     * Creates a KeyStoreConfiguration.
+     *
+     * @param location The location of the KeyStore, a file path, URL or resource.
+     * @param password The password to access the KeyStore.
+     * @param keyStoreType The KeyStore type, null defaults to {@code "JKS"}.
+     * @param keyManagerFactoryAlgorithm The standard name of the requested algorithm. See the Java Secure Socket
+     * Extension Reference Guide for information about these names.
+     * @return a new KeyStoreConfiguration
+     * @throws StoreConfigurationException Thrown if this call cannot load the KeyStore.
+     * @deprecated Use createKeyStoreConfiguration(String, char[], String, String)
+     */
+    @Deprecated
+    public static KeyStoreConfiguration createKeyStoreConfiguration(
+            // @formatter:off
+            final String location,
+            final String password,
+            final String keyStoreType,
+            final String keyManagerFactoryAlgorithm) throws StoreConfigurationException {
+            // @formatter:on
+        return createKeyStoreConfiguration(location,
+                (password == null ? null : password.toCharArray()),
+                keyStoreType,
+                keyManagerFactoryAlgorithm);
     }
 
     public KeyManagerFactory initKeyManagerFactory() throws NoSuchAlgorithmException, UnrecoverableKeyException,
             KeyStoreException {
         final KeyManagerFactory kmFactory = KeyManagerFactory.getInstance(this.keyManagerFactoryAlgorithm);
-        kmFactory.init(this.getKeyStore(), this.getPasswordAsCharArray());
+        final char[] password = this.getPasswordAsCharArray();
+        try {
+            kmFactory.init(this.getKeyStore(), password);
+        } finally {
+            if (password != null) {
+                Arrays.fill(password, '\0');
+            }
+        }
         return kmFactory;
     }
 

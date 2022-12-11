@@ -30,7 +30,11 @@ import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.config.AppenderControl;
 import org.apache.logging.log4j.core.config.Configuration;
+  <<<<<<< LOG4J2-1949
 import org.apache.logging.log4j.core.config.ConfigurationStopAware;
+  =======
+import org.apache.logging.log4j.core.config.Property;
+  >>>>>>> new-iso-date-time-formats
 import org.apache.logging.log4j.core.config.plugins.Plugin;
 import org.apache.logging.log4j.core.config.plugins.PluginAliases;
 import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
@@ -65,14 +69,14 @@ public final class FailoverAppender extends AbstractAppender implements Configur
     private volatile long nextCheckNanos = 0;
 
     private FailoverAppender(final String name, final Filter filter, final String primary, final String[] failovers,
-                             final int intervalMillis, final Configuration config, final boolean ignoreExceptions) {
-        super(name, filter, null, ignoreExceptions);
+            final int intervalMillis, final Configuration config, final boolean ignoreExceptions,
+            final Property[] properties) {
+        super(name, filter, null, ignoreExceptions, properties);
         this.primaryRef = primary;
         this.failovers = failovers;
         this.config = config;
         this.intervalNanos = TimeUnit.MILLISECONDS.toNanos(intervalMillis);
     }
-
 
     @Override
     public void start() {
@@ -239,7 +243,7 @@ public final class FailoverAppender extends AbstractAppender implements Configur
 
         final boolean ignoreExceptions = Booleans.parseBoolean(ignore, true);
 
-        return new FailoverAppender(name, filter, primary, failovers, retryIntervalMillis, config, ignoreExceptions);
+        return new FailoverAppender(name, filter, primary, failovers, retryIntervalMillis, config, ignoreExceptions, null);
     }
     
     private static class FailoverContext {

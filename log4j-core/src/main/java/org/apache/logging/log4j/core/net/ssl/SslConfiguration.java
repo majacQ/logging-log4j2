@@ -55,6 +55,18 @@ public class SslConfiguration {
         this.sslContext = this.createSslContext();
     }
 
+    /**
+     * Clears the secret fields in this object but still allow it to operate normally.
+     */
+    public void clearSecrets() {
+        if (this.keyStoreConfig != null) {
+            this.keyStoreConfig.clearSecrets();
+        }
+        if (this.trustStoreConfig != null) {
+            this.trustStoreConfig.clearSecrets();
+        }
+    }
+
     public SSLSocketFactory getSslSocketFactory() {
         return sslContext.getSocketFactory();
     }
@@ -207,6 +219,7 @@ public class SslConfiguration {
 
     /**
      * Creates an SslConfiguration from a KeyStoreConfiguration and a TrustStoreConfiguration.
+     *
      * @param protocol The protocol, see http://docs.oracle.com/javase/7/docs/technotes/guides/security/StandardNames.html#SSLContext
      * @param keyStoreConfig The KeyStoreConfiguration.
      * @param trustStoreConfig The TrustStoreConfiguration.
@@ -216,7 +229,7 @@ public class SslConfiguration {
     public static SslConfiguration createSSLConfiguration(
             // @formatter:off
             @PluginAttribute("protocol") final String protocol,
-            @PluginElement("KeyStore") final KeyStoreConfiguration keyStoreConfig, 
+            @PluginElement("KeyStore") final KeyStoreConfiguration keyStoreConfig,
             @PluginElement("TrustStore") final TrustStoreConfiguration trustStoreConfig) {
             // @formatter:on
         return new SslConfiguration(protocol, keyStoreConfig, trustStoreConfig);

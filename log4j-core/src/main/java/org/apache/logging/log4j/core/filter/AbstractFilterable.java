@@ -23,6 +23,7 @@ import org.apache.logging.log4j.core.AbstractLifeCycle;
 import org.apache.logging.log4j.core.Filter;
 import org.apache.logging.log4j.core.LifeCycle2;
 import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.config.Property;
 import org.apache.logging.log4j.core.config.plugins.PluginElement;
 
 /**
@@ -40,18 +41,44 @@ public abstract class AbstractFilterable extends AbstractLifeCycle implements Fi
         @PluginElement("Filter")
         private Filter filter;
 
-        public Filter getFilter() {
-            return filter;
-        }
+        // We are calling this attribute propertyArray because we use the more generic "properties" in several places
+        // with different types: Array, Map and List.
+        @PluginElement("Properties")
+        private Property[] propertyArray;
 
         @SuppressWarnings("unchecked")
         public B asBuilder() {
             return (B) this;
         }
 
-        public B withFilter(final Filter filter) {
+        public Filter getFilter() {
+            return filter;
+        }
+
+        public Property[] getPropertyArray() {
+            return propertyArray;
+        }
+
+        public B setFilter(final Filter filter) {
             this.filter = filter;
             return asBuilder();
+        }
+
+        public B setPropertyArray(final Property[] properties) {
+            this.propertyArray = properties;
+            return asBuilder();
+        }
+
+        /**
+         * Sets the filter.
+         *
+         * @param filter The filter
+         * @return this
+         * @deprecated Use {@link #setFilter(Filter)}.
+         */
+        @Deprecated
+        public B withFilter(final Filter filter) {
+            return setFilter(filter);
         }
 
     }
@@ -61,20 +88,23 @@ public abstract class AbstractFilterable extends AbstractLifeCycle implements Fi
      */
     private volatile Filter filter;
 
-    protected AbstractFilterable(final Filter filter) {
-        this.filter = filter;
-    }
+    @PluginElement("Properties")
+    private final Property[] propertyArray;
 
     protected AbstractFilterable() {
+        this(null, Property.EMPTY_ARRAY);
+    }
+
+    protected AbstractFilterable(final Filter filter) {
+        this(filter, Property.EMPTY_ARRAY);
     }
 
     /**
-     * Returns the Filter.
-     * @return the Filter or null.
+     * @since 2.11.2
      */
-    @Override
-    public Filter getFilter() {
-        return filter;
+    protected AbstractFilterable(final Filter filter, final Property[] propertyArray) {
+        this.filter = filter;
+        this.propertyArray = propertyArray == null ? Property.EMPTY_ARRAY : propertyArray;
     }
 
     /**
@@ -94,6 +124,34 @@ public abstract class AbstractFilterable extends AbstractLifeCycle implements Fi
             final Filter[] filters = new Filter[] {this.filter, filter};
             this.filter = CompositeFilter.createFilters(filters);
         }
+    }
+
+    /**
+     * Returns the Filter.
+     * @return the Filter or null.
+     */
+    @Override
+    public Filter getFilter() {
+        return filter;
+    }
+
+    /**
+     * Determines if a Filter is present.
+     * @return false if no Filter is present.
+     */
+    @Override
+    public boolean hasFilter() {
+        return filter != null;
+    }
+
+    /**
+     * Determine if the LogEvent should be processed or ignored.
+     * @param event The LogEvent.
+     * @return true if the LogEvent should be processed.
+     */
+    @Override
+    public boolean isFiltered(final LogEvent event) {
+        return filter != null && filter.filter(event) == Filter.Result.DENY;
     }
 
     /**
@@ -119,15 +177,6 @@ public abstract class AbstractFilterable extends AbstractLifeCycle implements Fi
                 this.filter = null;
             }
         }
-    }
-
-    /**
-     * Determines if a Filter is present.
-     * @return false if no Filter is present.
-     */
-    @Override
-    public boolean hasFilter() {
-        return filter != null;
     }
 
     /**
@@ -172,14 +221,8 @@ public abstract class AbstractFilterable extends AbstractLifeCycle implements Fi
         return stopped;
     }
 
-    /**
-     * Determine if the LogEvent should be processed or ignored.
-     * @param event The LogEvent.
-     * @return true if the LogEvent should be processed.
-     */
-    @Override
-    public boolean isFiltered(final LogEvent event) {
-        return filter != null && filter.filter(event) == Filter.Result.DENY;
+    public Property[] getPropertyArray() {
+        return propertyArray;
     }
 
 }

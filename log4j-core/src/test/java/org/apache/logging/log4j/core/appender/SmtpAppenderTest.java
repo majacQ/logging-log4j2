@@ -30,7 +30,6 @@ import org.apache.logging.log4j.categories.Appenders;
 import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.net.MimeMessageBuilder;
-import org.apache.logging.log4j.core.util.CyclicBuffer;
 import org.apache.logging.log4j.test.AvailablePortFinder;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -108,27 +107,6 @@ public class SmtpAppenderTest {
 
         builder.setSubject(subject);
         assertEquals(subject, builder.build().getSubject());
-    }
-
-    @Test
-    public void testCyclicBuffer() {
-        final CyclicBuffer<Integer> buffer = new CyclicBuffer<>(
-                Integer.class, 3);
-
-        assertTrue(buffer.isEmpty());
-        buffer.add(1);
-        assertFalse(buffer.isEmpty());
-        Integer[] items = buffer.removeAll();
-        assertTrue("Incorrect number of items", items.length == 1);
-
-        assertTrue(buffer.isEmpty());
-        buffer.add(1);
-        buffer.add(2);
-        buffer.add(3);
-        buffer.add(4);
-        items = buffer.removeAll();
-        assertTrue("Incorrect number of items", items.length == 3);
-        assertTrue(buffer.isEmpty());
     }
 
     @Test

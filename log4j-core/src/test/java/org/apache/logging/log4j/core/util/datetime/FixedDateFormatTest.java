@@ -25,6 +25,7 @@ import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.core.util.datetime.FixedDateFormat.FixedFormat;
+import org.apache.logging.log4j.core.util.datetime.FixedDateFormat.FixedTimeZoneFormat;
 import org.junit.Test;
 
 import static org.apache.logging.log4j.core.util.datetime.FixedDateFormat.FixedFormat.*;
@@ -156,12 +157,16 @@ public class FixedDateFormatTest {
         final long start = now - TimeUnit.HOURS.toMillis(25);
         final long end = now + TimeUnit.HOURS.toMillis(25);
         for (final FixedFormat format : FixedFormat.values()) {
-            final SimpleDateFormat simpleDF = new SimpleDateFormat(format.getPattern(), Locale.getDefault());
+            String pattern = format.getPattern();
+            if (containsNanos(format) || format.getTimeZoneFormat() != null) {
+                continue; // cannot compile precise timestamp formats with SimpleDateFormat
+            }
+            final SimpleDateFormat simpleDF = new SimpleDateFormat(pattern, Locale.getDefault());
             final FixedDateFormat customTF = new FixedDateFormat(format, TimeZone.getDefault());
             for (long time = start; time < end; time += 12345) {
                 final String actual = customTF.format(time);
                 final String expected = simpleDF.format(new Date(time));
-                assertEquals(format + "(" + format.getPattern() + ")" + "/" + time, expected, actual);
+                assertEquals(format + "(" + pattern + ")" + "/" + time, expected, actual);
             }
         }
     }
@@ -172,12 +177,16 @@ public class FixedDateFormatTest {
         final long start = now - TimeUnit.HOURS.toMillis(25);
         final long end = now + TimeUnit.HOURS.toMillis(25);
         for (final FixedFormat format : FixedFormat.values()) {
-            final SimpleDateFormat simpleDF = new SimpleDateFormat(format.getPattern(), Locale.getDefault());
+            String pattern = format.getPattern();
+            if (containsNanos(format) || format.getTimeZoneFormat() != null) {
+                continue; // cannot compile precise timestamp formats with SimpleDateFormat
+            }
+            final SimpleDateFormat simpleDF = new SimpleDateFormat(pattern, Locale.getDefault());
             final FixedDateFormat customTF = new FixedDateFormat(format, TimeZone.getDefault());
             for (long time = end; time > start; time -= 12345) {
                 final String actual = customTF.format(time);
                 final String expected = simpleDF.format(new Date(time));
-                assertEquals(format + "(" + format.getPattern() + ")" + "/" + time, expected, actual);
+                assertEquals(format + "(" + pattern + ")" + "/" + time, expected, actual);
             }
         }
     }
@@ -189,13 +198,19 @@ public class FixedDateFormatTest {
         final long end = now + TimeUnit.HOURS.toMillis(25);
         final char[] buffer = new char[128];
         for (final FixedFormat format : FixedFormat.values()) {
-            final SimpleDateFormat simpleDF = new SimpleDateFormat(format.getPattern(), Locale.getDefault());
+            String pattern = format.getPattern();
+            if (containsNanos(format) || format.getTimeZoneFormat() != null) {
+                // cannot compile precise timestamp formats with SimpleDateFormat
+                // This format() API not include the TZ
+                continue;
+            }
+            final SimpleDateFormat simpleDF = new SimpleDateFormat(pattern, Locale.getDefault());
             final FixedDateFormat customTF = new FixedDateFormat(format, TimeZone.getDefault());
             for (long time = start; time < end; time += 12345) {
                 final int length = customTF.format(time, buffer, 23);
                 final String actual = new String(buffer, 23, length);
                 final String expected = simpleDF.format(new Date(time));
-                assertEquals(format + "(" + format.getPattern() + ")" + "/" + time, expected, actual);
+                assertEquals(format + "(" + pattern + ")" + "/" + time, expected, actual);
             }
         }
     }
@@ -207,13 +222,17 @@ public class FixedDateFormatTest {
         final long end = now + TimeUnit.HOURS.toMillis(25);
         final char[] buffer = new char[128];
         for (final FixedFormat format : FixedFormat.values()) {
-            final SimpleDateFormat simpleDF = new SimpleDateFormat(format.getPattern(), Locale.getDefault());
+            String pattern = format.getPattern();
+            if (pattern.endsWith("n") || pattern.matches(".+n+X*") || pattern.matches(".+n+Z*") || format.getTimeZoneFormat() != null) {
+                continue; // cannot compile precise timestamp formats with SimpleDateFormat
+            }
+            final SimpleDateFormat simpleDF = new SimpleDateFormat(pattern, Locale.getDefault());
             final FixedDateFormat customTF = new FixedDateFormat(format, TimeZone.getDefault());
             for (long time = end; time > start; time -= 12345) {
                 final int length = customTF.format(time, buffer, 23);
                 final String actual = new String(buffer, 23, length);
                 final String expected = simpleDF.format(new Date(time));
-                assertEquals(format + "(" + format.getPattern() + ")" + "/" + time, expected, actual);
+                assertEquals(format + "(" + pattern + ")" + "/" + time, expected, actual);
             }
         }
     }
@@ -348,6 +367,12 @@ public class FixedDateFormatTest {
             calendar.add(Calendar.HOUR_OF_DAY, 1);
         }
     }
+    
+    private boolean containsNanos(FixedFormat fixedFormat) {
+        final String pattern = fixedFormat.getPattern();
+        return pattern.endsWith("n") || pattern.matches(".+n+X*") || pattern.matches(".+n+Z*");
+    }
+    
     /**
      * This test case validates date pattern before and after DST
      * Base Date : 12 Mar 2017
@@ -362,12 +387,16 @@ public class FixedDateFormatTest {
         final long end = now + TimeUnit.HOURS.toMillis(1);
 
         for (final FixedFormat format : FixedFormat.values()) {
-            final SimpleDateFormat simpleDF = new SimpleDateFormat(format.getPattern(), Locale.getDefault());
+            String pattern = format.getPattern();
+            if (containsNanos(format) || format.getTimeZoneFormat() != null) {
+                continue; // cannot compile precise timestamp formats with SimpleDateFormat
+            }
+            final SimpleDateFormat simpleDF = new SimpleDateFormat(pattern, Locale.getDefault());
             final FixedDateFormat customTF = new FixedDateFormat(format, TimeZone.getDefault());
             for (long time = end; time > start; time -= 12345) {
                 final String actual = customTF.format(time);
                 final String expected = simpleDF.format(new Date(time));
-                assertEquals(format + "(" + format.getPattern() + ")" + "/" + time, expected, actual);
+                assertEquals(format + "(" + pattern + ")" + "/" + time, expected, actual);
             }
         }
     }

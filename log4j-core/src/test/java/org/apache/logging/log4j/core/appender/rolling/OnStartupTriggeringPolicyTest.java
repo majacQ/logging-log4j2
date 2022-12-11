@@ -26,6 +26,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.FileTime;
 import java.util.Arrays;
 
 import org.apache.logging.log4j.core.config.Configuration;
@@ -52,12 +54,15 @@ public class OnStartupTriggeringPolicyTest {
     private static final FastDateFormat formatter = FastDateFormat.getInstance("MM-dd-yyyy");
 
     @Rule
-    public CleanFolders rule = new CleanFolders("target/rollOnStartup");
+    public CleanFolders rule = new CleanFolders(TARGET_FOLDER);
 
     @Test
     public void testPolicy() throws Exception {
+        //System.setProperty("log4j2.debug", "true");
+        //System.setProperty("log4j2.StatusLogger.level", "trace");
         final Configuration configuration = new DefaultConfiguration();
         final Path target = Paths.get(TARGET_FILE);
+        Assert.assertFalse(Files.exists(target));
         target.toFile().getParentFile().mkdirs();
         final long timeStamp = System.currentTimeMillis() - (1000 * 60 * 60 * 24);
         final String expectedDate = formatter.format(timeStamp);
@@ -71,7 +76,10 @@ public class OnStartupTriggeringPolicyTest {
         assertTrue(size > 0);
         assertEquals(copied, size);
 
-        Assert.assertTrue(target.toFile().setLastModified(timeStamp));
+        final FileTime fileTime = FileTime.fromMillis(timeStamp);
+        final BasicFileAttributeView attrs = Files.getFileAttributeView(target, BasicFileAttributeView.class);
+        attrs.setTimes(fileTime, fileTime, fileTime);
+
         final PatternLayout layout = PatternLayout.newBuilder().withPattern("%msg").withConfiguration(configuration)
                 .build();
         final RolloverStrategy strategy = DefaultRolloverStrategy.createStrategy(null, null, null, "0", null, true,

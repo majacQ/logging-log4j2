@@ -29,10 +29,10 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.DefaultConfiguration;
 import org.apache.logging.log4j.core.config.Node;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginBuilderAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
-import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
+import org.apache.logging.log4j.core.config.plugins.PluginElement;
+import org.apache.logging.log4j.core.util.KeyValuePair;
 
 /**
  * Appends a series of JSON events as strings serialized as bytes.
@@ -58,6 +58,12 @@ import org.apache.logging.log4j.core.config.plugins.PluginConfiguration;
  * appender uses end-of-line characters and indents lines to format the text. If {@code compact="true"}, then no
  * end-of-line or indentation is used. Message content may contain, of course, escaped end-of-lines.
  * </p>
+ * <h3>Additional Fields</h3>
+ * <p>
+ * This property allows addition of custom fields into generated JSON.
+ * {@code <JsonLayout><KeyValuePair key="foo" value="bar"/></JsonLayout>} inserts {@code "foo":"bar"} directly
+ * into JSON output. Supports Lookup expressions.
+ * </p>
  */
 @Plugin(name = "JsonLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
 public final class JsonLayout extends AbstractJacksonLayout {
@@ -73,7 +79,13 @@ public final class JsonLayout extends AbstractJacksonLayout {
 
         @PluginBuilderAttribute
         private boolean propertiesAsList;
-        
+
+        @PluginBuilderAttribute
+        private boolean objectMessageAsJsonObject;
+
+        @PluginElement("AdditionalField")
+        private KeyValuePair[] additionalFields;
+
         public Builder() {
             super();
             setCharset(StandardCharsets.UTF_8);
@@ -84,8 +96,10 @@ public final class JsonLayout extends AbstractJacksonLayout {
             final boolean encodeThreadContextAsList = isProperties() && propertiesAsList;
             final String headerPattern = toStringOrNull(getHeader());
             final String footerPattern = toStringOrNull(getFooter());
-            return new JsonLayout(getConfiguration(), isLocationInfo(), isProperties(), encodeThreadContextAsList, isComplete(),
-                    isCompact(), getEventEol(), headerPattern, footerPattern, getCharset(), isIncludeStacktrace(), isStacktraceAsString());
+            return new JsonLayout(getConfiguration(), isLocationInfo(), isProperties(), encodeThreadContextAsList,
+                    isComplete(), isCompact(), getEventEol(), headerPattern, footerPattern, getCharset(),
+                    isIncludeStacktrace(), isStacktraceAsString(), isIncludeNullDelimiter(),
+                    getAdditionalFields(), getObjectMessageAsJsonObject());
         }
 
         public boolean isPropertiesAsList() {
@@ -94,6 +108,26 @@ public final class JsonLayout extends AbstractJacksonLayout {
 
         public B setPropertiesAsList(final boolean propertiesAsList) {
             this.propertiesAsList = propertiesAsList;
+            return asBuilder();
+        }
+
+        public boolean getObjectMessageAsJsonObject() {
+            return objectMessageAsJsonObject;
+        }
+
+        public B setObjectMessageAsJsonObject(final boolean objectMessageAsJsonObject) {
+            this.objectMessageAsJsonObject = objectMessageAsJsonObject;
+            return asBuilder();
+        }
+
+        @Override
+        public KeyValuePair[] getAdditionalFields() {
+            return additionalFields;
+        }
+
+        @Override
+        public B setAdditionalFields(final KeyValuePair[] additionalFields) {
+            this.additionalFields = additionalFields;
             return asBuilder();
         }
     }
@@ -106,22 +140,28 @@ public final class JsonLayout extends AbstractJacksonLayout {
             final boolean encodeThreadContextAsList,
             final boolean complete, final boolean compact, final boolean eventEol, final String headerPattern,
             final String footerPattern, final Charset charset, final boolean includeStacktrace) {
-        super(config, new JacksonFactory.JSON(encodeThreadContextAsList, includeStacktrace, false).newWriter(
-            locationInfo, properties, compact),
-            charset, compact, complete, eventEol,
-            PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(headerPattern).setDefaultPattern(DEFAULT_HEADER).build(),
-            PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(footerPattern).setDefaultPattern(DEFAULT_FOOTER).build());
+        super(config, new JacksonFactory.JSON(encodeThreadContextAsList, includeStacktrace, false, false).newWriter(
+                locationInfo, properties, compact),
+                charset, compact, complete, eventEol,
+                PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(headerPattern).setDefaultPattern(DEFAULT_HEADER).build(),
+                PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(footerPattern).setDefaultPattern(DEFAULT_FOOTER).build(),
+                false, null);
     }
 
     private JsonLayout(final Configuration config, final boolean locationInfo, final boolean properties,
-            final boolean encodeThreadContextAsList,
-            final boolean complete, final boolean compact, final boolean eventEol, final String headerPattern,
-            final String footerPattern, final Charset charset, final boolean includeStacktrace, final boolean stacktraceAsString) {
-        super(config, new JacksonFactory.JSON(encodeThreadContextAsList, includeStacktrace, stacktraceAsString).newWriter(
-            locationInfo, properties, compact),
-            charset, compact, complete, eventEol,
-            PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(headerPattern).setDefaultPattern(DEFAULT_HEADER).build(),
-            PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(footerPattern).setDefaultPattern(DEFAULT_FOOTER).build());
+                       final boolean encodeThreadContextAsList,
+                       final boolean complete, final boolean compact, final boolean eventEol,
+                       final String headerPattern, final String footerPattern, final Charset charset,
+                       final boolean includeStacktrace, final boolean stacktraceAsString,
+                       final boolean includeNullDelimiter,
+                       final KeyValuePair[] additionalFields, final boolean objectMessageAsJsonObject) {
+        super(config, new JacksonFactory.JSON(encodeThreadContextAsList, includeStacktrace, stacktraceAsString, objectMessageAsJsonObject).newWriter(
+                locationInfo, properties, compact),
+                charset, compact, complete, eventEol,
+                PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(headerPattern).setDefaultPattern(DEFAULT_HEADER).build(),
+                PatternLayout.newSerializerBuilder().setConfiguration(config).setPattern(footerPattern).setDefaultPattern(DEFAULT_FOOTER).build(),
+                includeNullDelimiter,
+                additionalFields);
     }
 
     /**
@@ -225,7 +265,7 @@ public final class JsonLayout extends AbstractJacksonLayout {
             final boolean includeStacktrace) {
         final boolean encodeThreadContextAsList = properties && propertiesAsList;
         return new JsonLayout(config, locationInfo, properties, encodeThreadContextAsList, complete, compact, eventEol,
-                headerPattern, footerPattern, charset, includeStacktrace, false);
+                headerPattern, footerPattern, charset, includeStacktrace, false, false, null, false);
     }
 
     @PluginBuilderFactory
@@ -240,7 +280,7 @@ public final class JsonLayout extends AbstractJacksonLayout {
      */
     public static JsonLayout createDefaultLayout() {
         return new JsonLayout(new DefaultConfiguration(), false, false, false, false, false, false,
-                DEFAULT_HEADER, DEFAULT_FOOTER, StandardCharsets.UTF_8, true, false);
+                DEFAULT_HEADER, DEFAULT_FOOTER, StandardCharsets.UTF_8, true, false, false, null, false);
     }
 
     @Override

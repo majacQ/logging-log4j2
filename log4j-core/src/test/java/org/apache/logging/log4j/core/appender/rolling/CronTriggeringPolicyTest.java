@@ -29,7 +29,7 @@ import org.junit.Test;
 public class CronTriggeringPolicyTest {
 
     private static final String CRON_EXPRESSION = "0 0 0 * * ?";
-    
+
     private NullConfiguration configuration;
 
      // TODO Need a CleanRegexFiles("testcmd.\\.log\\..*");
@@ -51,8 +51,7 @@ public class CronTriggeringPolicyTest {
 
     private void testBuilder() {
         // @formatter:off
-        final RollingFileAppender raf = RollingFileAppender.newBuilder()
-            .withName("test1")
+        final RollingFileAppender raf = RollingFileAppender.newBuilder().setName("test1")
             .withFileName("target/testcmd1.log")
             .withFilePattern("target/testcmd1.log.%d{yyyy-MM-dd}")
             .withPolicy(createPolicy())
@@ -87,8 +86,7 @@ public class CronTriggeringPolicyTest {
     @Test
     public void testRollingRandomAccessFileAppender() {
         // @formatter:off
-        RollingRandomAccessFileAppender.newBuilder()
-            .withName("test2")
+        RollingRandomAccessFileAppender.newBuilder().setName("test2")
             .withFileName("target/testcmd2.log")
             .withFilePattern("target/testcmd2.log.%d{yyyy-MM-dd}")
             .withPolicy(createPolicy())
@@ -98,7 +96,7 @@ public class CronTriggeringPolicyTest {
         // @formatter:on
     }
 
-    
+
     /**
      * Tests LOG4J2-1474 CronTriggeringPolicy raise exception and fail to rollover log file when evaluateOnStartup is
      * true.

@@ -25,9 +25,9 @@ import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.Node;
 import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
 import org.apache.logging.log4j.core.config.plugins.PluginBuilderFactory;
 import org.apache.logging.log4j.core.jackson.XmlConstants;
+import org.apache.logging.log4j.core.util.KeyValuePair;
 
 /**
  * Appends a series of {@code event} elements as defined in the <a href="log4j.dtd">log4j.dtd</a>.
@@ -52,6 +52,12 @@ import org.apache.logging.log4j.core.jackson.XmlConstants;
  * appender uses end-of-line characters and indents lines to format the XML. If {@code compact="true"}, then no
  * end-of-line or indentation is used. Message content may contain, of course, end-of-lines.
  * </p>
+ * <h3>Additional Fields</h3>
+ * <p>
+ * This property allows addition of custom fields into generated JSON.
+ * {@code <XmlLayout><KeyValuePair key="foo" value="bar"/></XmlLayout>} inserts {@code <foo>bar</foo>} directly
+ * into XML output. Supports Lookup expressions.
+ * </p>
  */
 @Plugin(name = "XmlLayout", category = Node.CATEGORY, elementType = Layout.ELEMENT_TYPE, printObject = true)
 public final class XmlLayout extends AbstractJacksonLayout {
@@ -69,7 +75,8 @@ public final class XmlLayout extends AbstractJacksonLayout {
         @Override
         public XmlLayout build() {
             return new XmlLayout(getConfiguration(), isLocationInfo(), isProperties(), isComplete(),
-                isCompact(), getCharset(), isIncludeStacktrace(), isStacktraceAsString());
+                    isCompact(), getCharset(), isIncludeStacktrace(), isStacktraceAsString(),
+                    isIncludeNullDelimiter(), getAdditionalFields());
         }
     }
 
@@ -79,14 +86,18 @@ public final class XmlLayout extends AbstractJacksonLayout {
     @Deprecated
     protected XmlLayout(final boolean locationInfo, final boolean properties, final boolean complete,
                         final boolean compact, final Charset charset, final boolean includeStacktrace) {
-        this(null, locationInfo, properties, complete, compact, charset, includeStacktrace, false);
+        this(null, locationInfo, properties, complete, compact, charset, includeStacktrace, false, false, null);
     }
 
     private XmlLayout(final Configuration config, final boolean locationInfo, final boolean properties,
                       final boolean complete, final boolean compact, final Charset charset,
-                      final boolean includeStacktrace, final boolean stacktraceAsString) {
+                      final boolean includeStacktrace, final boolean stacktraceAsString,
+                      final boolean includeNullDelimiter,
+                      final KeyValuePair[] additionalFields) {
         super(config, new JacksonFactory.XML(includeStacktrace, stacktraceAsString).newWriter(
-            locationInfo, properties, compact), charset, compact, complete, false, null, null);
+            locationInfo, properties, compact),
+            charset, compact, complete, false, null, null, includeNullDelimiter,
+            additionalFields);
     }
 
     /**
@@ -135,7 +146,7 @@ public final class XmlLayout extends AbstractJacksonLayout {
      * <li>Key: "dtd" Value: "log4j-events.dtd"</li>
      * <li>Key: "version" Value: "2.0"</li>
      * </ul>
-     * 
+     *
      * @return Map of content format keys supporting XmlLayout
      */
     @Override
@@ -177,7 +188,8 @@ public final class XmlLayout extends AbstractJacksonLayout {
             final boolean compact,
             final Charset charset,
             final boolean includeStacktrace) {
-        return new XmlLayout(null, locationInfo, properties, complete, compact, charset, includeStacktrace, false);
+        return new XmlLayout(null, locationInfo, properties, complete, compact, charset, includeStacktrace, false,
+                false, null);
     }
 
     @PluginBuilderFactory
@@ -191,6 +203,6 @@ public final class XmlLayout extends AbstractJacksonLayout {
      * @return an XML Layout.
      */
     public static XmlLayout createDefaultLayout() {
-        return new XmlLayout(null, false, false, false, false, StandardCharsets.UTF_8, true, false);
+        return new XmlLayout(null, false, false, false, false, StandardCharsets.UTF_8, true, false, false, null);
     }
 }

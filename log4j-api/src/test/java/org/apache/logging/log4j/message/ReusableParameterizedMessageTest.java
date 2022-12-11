@@ -19,6 +19,9 @@ package org.apache.logging.log4j.message;
 import org.apache.logging.log4j.junit.Mutable;
 import org.junit.Test;
 
+import java.util.LinkedList;
+import java.util.List;
+
 import static org.junit.Assert.*;
 
 /**
@@ -40,9 +43,9 @@ public class ReusableParameterizedMessageTest {
         String result = msg.getFormattedMessage();
         assertEquals(testMsg, result);
 
-        msg.set(testMsg, null);
+        msg.set(testMsg, (Object) null);
         result = msg.getFormattedMessage();
-        assertEquals(testMsg, result);
+        assertEquals("Test message null", result);
 
         msg.set(testMsg, null, null);
         result = msg.getFormattedMessage();
@@ -53,7 +56,7 @@ public class ReusableParameterizedMessageTest {
     public void testFormat3StringArgs() {
         final String testMsg = "Test message {}{} {}";
         final String[] args = { "a", "b", "c" };
-        final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();
+        final String result = new ReusableParameterizedMessage().set(testMsg, (Object[]) args).getFormattedMessage();
         assertEquals("Test message ab c", result);
     }
 
@@ -61,7 +64,7 @@ public class ReusableParameterizedMessageTest {
     public void testFormatNullArgs() {
         final String testMsg = "Test message {} {} {} {} {} {}";
         final String[] args = { "a", null, "c", null, null, null };
-        final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();
+        final String result = new ReusableParameterizedMessage().set(testMsg, (Object[]) args).getFormattedMessage();
         assertEquals("Test message a null c null null null", result);
     }
 
@@ -69,7 +72,7 @@ public class ReusableParameterizedMessageTest {
     public void testFormatStringArgsIgnoresSuperfluousArgs() {
         final String testMsg = "Test message {}{} {}";
         final String[] args = { "a", "b", "c", "unnecessary", "superfluous" };
-        final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();
+        final String result = new ReusableParameterizedMessage().set(testMsg, (Object[]) args).getFormattedMessage();
         assertEquals("Test message ab c", result);
     }
 
@@ -77,7 +80,7 @@ public class ReusableParameterizedMessageTest {
     public void testFormatStringArgsWithEscape() {
         final String testMsg = "Test message \\{}{} {}";
         final String[] args = { "a", "b", "c" };
-        final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();
+        final String result = new ReusableParameterizedMessage().set(testMsg, (Object[]) args).getFormattedMessage();
         assertEquals("Test message {}a b", result);
     }
 
@@ -85,7 +88,7 @@ public class ReusableParameterizedMessageTest {
     public void testFormatStringArgsWithTrailingEscape() {
         final String testMsg = "Test message {}{} {}\\";
         final String[] args = { "a", "b", "c" };
-        final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();
+        final String result = new ReusableParameterizedMessage().set(testMsg, (Object[]) args).getFormattedMessage();
         assertEquals("Test message ab c\\", result);
     }
 
@@ -93,7 +96,7 @@ public class ReusableParameterizedMessageTest {
     public void testFormatStringArgsWithTrailingText() {
         final String testMsg = "Test message {}{} {}Text";
         final String[] args = { "a", "b", "c" };
-        final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();;
+        final String result = new ReusableParameterizedMessage().set(testMsg, (Object[]) args).getFormattedMessage();
         assertEquals("Test message ab cText", result);
     }
 
@@ -101,14 +104,14 @@ public class ReusableParameterizedMessageTest {
     public void testFormatStringArgsWithTrailingEscapedEscape() {
         final String testMsg = "Test message {}{} {}\\\\";
         final String[] args = { "a", "b", "c" };
-        final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();
+        final String result = new ReusableParameterizedMessage().set(testMsg, (Object[]) args).getFormattedMessage();
         assertEquals("Test message ab c\\\\", result);
     }
 
     @Test
     public void testFormatStringArgsWithEscapedEscape() {
         final String testMsg = "Test message \\\\{}{} {}";
-        final String[] args = { "a", "b", "c" };
+        final Object[] args = { "a", "b", "c" };
         final String result = new ReusableParameterizedMessage().set(testMsg, args).getFormattedMessage();
         assertEquals("Test message \\ab c", result);
     }
@@ -143,5 +146,24 @@ public class ReusableParameterizedMessageTest {
         final Throwable EXCEPTION2 = new UnsupportedOperationException("#2");
         msg.set(testMsg, "msgs", EXCEPTION2);
         assertSame(EXCEPTION2, msg.getThrowable());
+    }
+
+    @Test
+    public void testParameterConsumer() {
+        final String testMsg = "Test message {}";
+        final ReusableParameterizedMessage msg = new ReusableParameterizedMessage();
+        final Throwable EXCEPTION1 = new IllegalAccessError("#1");
+        msg.set(testMsg, "msg", EXCEPTION1);
+        final List<Object> expected = new LinkedList<>();
+        expected.add("msg");
+        expected.add(EXCEPTION1);
+        final List<Object> actual = new LinkedList<>();
+        msg.forEachParameter(new ParameterConsumer<Void>() {
+            @Override
+            public void accept(final Object parameter, final int parameterIndex, final Void state) {
+                actual.add(parameter);
+            }
+        }, null);
+        assertEquals(expected, actual);
     }
 }

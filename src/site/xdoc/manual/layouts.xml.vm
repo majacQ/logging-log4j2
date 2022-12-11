@@ -202,10 +202,7 @@ logger.debug("one={}, two={}, three={}", 1, 2, 3);
           <pre class="prettyprint linenums">
   &lt;Appenders&gt;
     &lt;Socket name="Graylog" protocol="udp" host="graylog.domain.com" port="12201"&gt;
-        &lt;GelfLayout host="someserver" compressionType="ZLIB" compressionThreshold="1024"&gt;
-            &lt;KeyValuePair key="additionalField1" value="constant value"/&gt;
-            &lt;KeyValuePair key="additionalField2" value="${dollar}${dollar}{ctx:key}"/&gt;
-        &lt;/GelfLayout&gt;
+        &lt;GelfLayout host="someserver" compressionType="ZLIB" compressionThreshold="1024"/&gt;
     &lt;/Socket&gt;
   &lt;/Appenders&gt;
 </pre>
@@ -215,10 +212,7 @@ logger.debug("one={}, two={}, three={}", 1, 2, 3);
           <pre class="prettyprint linenums">
   &lt;Appenders&gt;
     &lt;Socket name="Graylog" protocol="tcp" host="graylog.domain.com" port="12201"&gt;
-        &lt;GelfLayout host="someserver" compressionType="OFF" includeNullDelimiter="true"&gt;
-            &lt;KeyValuePair key="additionalField1" value="constant value"/&gt;
-            &lt;KeyValuePair key="additionalField2" value="${dollar}${dollar}{ctx:key}"/&gt;
-        &lt;/GelfLayout&gt;
+        &lt;GelfLayout host="someserver" compressionType="OFF" includeNullDelimiter="true"/&gt;
     &lt;/Socket&gt;
   &lt;/Appenders&gt;
 </pre>
@@ -263,12 +257,24 @@ logger.debug("one={}, two={}, three={}", 1, 2, 3);
             </tr>
             <caption align="top">GelfLayout Parameters</caption>
           </table>
-           <p>
-             See also:
-           </p>
-           <ul>
-             <li>The <a href="http://docs.graylog.org/en/latest/pages/gelf.html#gelf">GELF specification</a></li>
-           </ul>
+          <p>
+              To include any custom field in the output, use following syntax:
+          </p>
+              <pre class="prettyprint linenums">
+  &lt;GelfLayout&gt;
+    &lt;KeyValuePair key="additionalField1" value="constant value"/&gt;
+    &lt;KeyValuePair key="additionalField2" value="${dollar}${dollar}{ctx:key}"/&gt;
+  &lt;/GelfLayout&gt;
+</pre>
+          <p>
+              Custom fields are included in the order they are declared. The values support <a href="lookups.html">lookups</a>.
+          </p>
+          <p>
+            See also:
+          </p>
+          <ul>
+            <li>The <a href="http://docs.graylog.org/en/latest/pages/gelf.html#gelf">GELF specification</a></li>
+          </ul>
         </subsection>
         <a name="HTMLLayout"/>
         <subsection name="HTML Layout">
@@ -339,7 +345,10 @@ logger.debug("one={}, two={}, three={}", 1, 2, 3);
           Log event follows this pattern:
           </p>
           <pre class="prettyprint linenums">{
-  "timeMillis" : 1493121664118,
+  "instant" : {
+    "epochSecond" : 1493121664,
+    "nanoOfSecond" : 118000000
+  },
   "thread" : "main",
   "level" : "INFO",
   "loggerName" : "HelloWorld",
@@ -355,6 +364,7 @@ logger.debug("one={}, two={}, three={}", 1, 2, 3);
   "message" : "Hello, world!",
   "thrown" : {
     "commonElementCount" : 0,
+    "message" : "error message",
     "name" : "java.lang.RuntimeException",
     "extendedStackTrace" : [ {
       "class" : "logtest.Main",
@@ -452,10 +462,32 @@ logger.debug("one={}, two={}, three={}", 1, 2, 3);
             <tr>
               <td>stacktraceAsString</td>
               <td>boolean</td>
-              <td>Whether to format the stackstrace as a string, and not a nested object (optional, defaults to false).</td>
+              <td>Whether to format the stacktrace as a string, and not a nested object (optional, defaults to false).</td>
+            </tr>
+            <tr>
+              <td>includeNullDelimiter</td>
+              <td>boolean</td>
+              <td>Whether to include NULL byte as delimiter after each event (optional, default to false).</td>
+            </tr>
+            <tr>
+              <td>objectMessageAsJsonObject</td>
+              <td>boolean</td>
+              <td>If true, ObjectMessage is serialized as JSON object to the "message" field of the output log. Defaults to false.</td>
             </tr>
             <caption align="top">JsonLayout Parameters</caption>
           </table>
+          <p>
+              To include any custom field in the output, use following syntax:
+          </p>
+              <pre class="prettyprint linenums">
+  &lt;JsonLayout&gt;
+    &lt;KeyValuePair key="additionalField1" value="constant value"/&gt;
+    &lt;KeyValuePair key="additionalField2" value="${dollar}${dollar}{ctx:key}"/&gt;
+  &lt;/JsonLayout&gt;
+</pre>
+          <p>
+              Custom fields are always last, in the order they are declared. The values support <a href="lookups.html">lookups</a>.
+          </p>
           <p>
             Additional <a href="../runtime-dependencies.html">runtime dependencies</a> are required for using JsonLayout.
           </p>
@@ -688,69 +720,92 @@ WARN  [main]: Message 2</pre>
                   followed by a set of braces containing a date and time pattern string per
                   #javadoc('java/text', 'SimpleDateFormat').
                 </p>
-                <p>The predefined formats are
-                  <code>DEFAULT</code>,
-                  <code>ABSOLUTE</code>,
-                  <code>COMPACT</code>,
-                  <code>DATE</code>,
-                  <code>ISO8601</code>,
-                  and
-                  <code>ISO8601_BASIC</code>.
-                </p>
+                <p>The predefined <em>named</em> formats are:</p>
+                <table>
+                  <tr>
+                    <th>Pattern</th>
+                    <th>Example</th>
+                  </tr>
+                  <tr>
+                    <td>%d{DEFAULT}</td>
+                    <td>2012-11-02 14:34:02,123</td>
+                  </tr>
+                  <tr>
+                    <td>%d{DEFAULT_MICROS}</td>
+                    <td>2012-11-02 14:34:02,123456</td>
+                  </tr>
+                  <tr>
+                    <td>%d{DEFAULT_NANOS}</td>
+                    <td>2012-11-02 14:34:02,123456789</td>
+                  </tr>
+                  <tr>
+                    <td>%d{ISO8601}</td>
+                    <td>2012-11-02T14:34:02,781</td>
+                  </tr>
+                  <tr>
+                    <td>%d{ISO8601_BASIC}</td>
+                    <td>20121102T143402,781</td>
+                  </tr>
+                  <tr>
+                    <td>%d{ABSOLUTE}</td>
+                    <td>14:34:02,781</td>
+                  </tr>
+                  <tr>
+                    <td>%d{ABSOLUTE_MICROS}</td>
+                    <td>14:34:02,123456</td>
+                  </tr>
+                  <tr>
+                    <td>%d{ABSOLUTE_NANOS}</td>
+                    <td>14:34:02,123456789</td>
+                  </tr>
+                  <tr>
+                    <td>%d{DATE}</td>
+                    <td>02 Nov 2012 14:34:02,781</td>
+                  </tr>
+                  <tr>
+                    <td>%d{COMPACT}</td>
+                    <td>20121102143402781</td>
+                  </tr>
+                  <tr>
+                    <td>%d{UNIX}</td>
+                    <td>1351866842</td>
+                  </tr>
+                  <tr>
+                    <td>%d{UNIX_MILLIS}</td>
+                    <td>1351866842781</td>
+                  </tr>
+                </table>                
                 <p>You can also use a set of braces containing a time zone id per
                   <a class="javadoc" href="${javadocRoot}/java/util/TimeZone.html${sharp}getTimeZone(java.lang.String)">
                     java.util.TimeZone.getTimeZone</a>. If no date format specifier is given then the DEFAULT format is used.
-                  <table>
-                    <tr>
-                      <th>Pattern</th>
-                      <th>Example</th>
-                    </tr>
-                    <tr>
-                      <td>%d{DEFAULT}</td>
-                      <td>2012-11-02 14:34:02,781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{ISO8601}</td>
-                      <td>2012-11-02T14:34:02,781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{ISO8601_BASIC}</td>
-                      <td>20121102T143402,781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{ABSOLUTE}</td>
-                      <td>14:34:02,781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{DATE}</td>
-                      <td>02 Nov 2012 14:34:02,781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{COMPACT}</td>
-                      <td>20121102143402781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{HH:mm:ss,SSS}</td>
-                      <td>14:34:02,781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{dd MMM yyyy HH:mm:ss,SSS}</td>
-                      <td>02 Nov 2012 14:34:02,781</td>
-                    </tr>
-                    <tr>
-                      <td>%d{HH:mm:ss}{GMT+0}</td>
-                      <td>18:34:02</td>
-                    </tr>
-                    <tr>
-                      <td>%d{UNIX}</td>
-                      <td>1351866842</td>
-                    </tr>
-                    <tr>
-                      <td>%d{UNIX_MILLIS}</td>
-                      <td>1351866842781</td>
-                    </tr>
-                  </table>
                 </p>
+                <p>You can define custom date formats:</p>
+                <table>
+                  <tr>
+                    <th>Pattern</th>
+                    <th>Example</th>
+                  </tr>
+                  <tr>
+                    <td>%d{HH:mm:ss,SSS}</td>
+                    <td>14:34:02,123</td>
+                  </tr>
+                  <tr>
+                    <td>%d{HH:mm:ss,nnnn} to %d{HH:mm:ss,nnnnnnnnn}</td>
+                    <td>14:34:02,1234 to 14:34:02,123456789</td>
+                  </tr>
+                  <tr>
+                    <td>%d{dd MMM yyyy HH:mm:ss,SSS}</td>
+                    <td>02 Nov 2012 14:34:02,123</td>
+                  </tr>
+                  <tr>
+                    <td>%d{dd MMM yyyy HH:mm:ss,nnnn} to %d{dd MMM yyyy HH:mm:ss,nnnnnnnnn}</td>
+                    <td>02 Nov 2012 14:34:02,1234 to 02 Nov 2012 14:34:02,123456789</td>
+                  </tr>
+                  <tr>
+                    <td>%d{HH:mm:ss}{GMT+0}</td>
+                    <td>18:34:02</td>
+                  </tr>
+                </table>
                 <p>
                   %d{UNIX} outputs the UNIX time in seconds. %d{UNIX_MILLIS} outputs the UNIX time in milliseconds.
                   The UNIX time is the difference, in seconds for UNIX and in milliseconds for UNIX_MILLIS, between
@@ -760,12 +815,24 @@ WARN  [main]: Message 2</pre>
                   This is an efficient way to output the event time because only a conversion from long to String
                   takes place, there is no Date formatting involved.
                 </p>
+                <p>
+                  Log4j 2.11 adds limited support for timestamps more precise than milliseconds when running on Java 9.
+                  Note that not all
+                  <a href="https://docs.oracle.com/javase/9/docs/api/java/time/format/DateTimeFormatter.html">DateTimeFormatter</a>
+                   formats are supported.
+                  Only timestamps in the formats mentioned in the table above may use the "nano-of-second"
+                  pattern letter <code>n</code> instead of the "fraction-of-second" pattern letter <code>S</code>.
+                </p>
+                <p>
+                  Users may revert back to a millisecond-precision clock when running on Java 9 by setting system property
+                  <code>log4j2.Clock</code> to <code>SystemMillisClock</code>.
+                </p>
               </td>
             </tr>
             <tr>
               <td align="center">
-                <b>enc</b>{<i>pattern</i>}{[HTML|JSON]}<br />
-                <b>encode</b>{<i>pattern</i>}{[HTML|JSON]}
+                <b>enc</b>{<i>pattern</i>}{[HTML|XML|JSON|CRLF]}<br />
+                <b>encode</b>{<i>pattern</i>}{[HTML|XML|JSON|CRLF]}
               </td>
               <td>
                 <p>
@@ -793,6 +860,18 @@ WARN  [main]: Message 2</pre>
                   <tr>
                     <td>&amp;, &lt;, &gt;, &quot;, &apos;, &#x2F;</td>
                     <td>Replaced with the corresponding HTML entity</td>
+                  </tr>
+                </table>
+                <p>Using the XML encoding format, this follows the escaping rules specified by
+                   <a href="https://www.w3.org/TR/xml/">the XML specification</a>:</p>
+                <table>
+                  <tr>
+                    <th>Character</th>
+                    <th>Replacement</th>
+                  </tr>
+                  <tr>
+                    <td>&amp;, &lt;, &gt;, &quot;, &apos;</td>
+                    <td>Replaced with the corresponding XML entity</td>
                   </tr>
                 </table>
                 <p>
@@ -825,6 +904,17 @@ WARN  [main]: Message 2</pre>
                   For example, the pattern <code>{"message": "%enc{%m}{JSON}"}</code> could be used to output a
                   valid JSON document containing the log message as a string value.
                 </p>
+                <p>Using the CRLF encoding format, the following characters are replaced:</p>
+                <table>
+                  <tr>
+                    <th>Character</th>
+                    <th>Replacement</th>
+                  </tr>
+                  <tr>
+                    <td>'\r', '\n'</td>
+                    <td>Converted into escaped strings "\\r" and "\\n" respectively</td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>
@@ -854,12 +944,11 @@ WARN  [main]: Message 2</pre>
                 &nbsp;&nbsp;&nbsp;| "short.lineNumber"<br />
                 &nbsp;&nbsp;&nbsp;| "short.methodName"<br />
                 &nbsp;&nbsp;&nbsp;| "short.message"<br />
-                &nbsp;&nbsp;&nbsp;| "short.localizedMessage"]}<br />
-                &nbsp;&nbsp;[,filters(package,package,...)]<br/>
-                &nbsp;&nbsp;[,separator(<i>separator</i>)]<br/>
-                }<br/>
-                {suffix(<i>pattern</i>)<br/>
-                }<br/>
+                &nbsp;&nbsp;&nbsp;| "short.localizedMessage"]<br />
+                }<br />
+                &nbsp;&nbsp;{filters(package,package,...)}<br/>
+                &nbsp;&nbsp;{suffix(<i>pattern</i>)}<br/>
+                &nbsp;&nbsp;{separator(<i>separator</i>)}<br/>
               </td>
               <td>
                 <p>
@@ -896,18 +985,16 @@ WARN  [main]: Message 2</pre>
                 <p>
                   Specifying <code>%throwable{none}</code> or <code>%throwable{0}</code> suppresses output of the exception.
                 </p>
-                <p> 
-                  Use <code>filters(<i>packages</i>)</code> where <i>packages</i> is a list of package names to 
+                <p>
+                  Use <code>{filters(<i>packages</i>)}</code> where <i>packages</i> is a list of package names to
                   suppress matching stack frames from stack traces.
                 </p>
                 <p>
-                  Use a <code>separator</code> string to separate the lines of a stack trace. For example: 
-                  <code>separator(|)</code>. The default value is the <code>line.separator</code> system property, 
-                  which is operating system dependent.
+                  Use <code>{suffix(<i>pattern</i>)}</code> to add the output of <i>pattern</i> at the end of each stack frames.
                 </p>
                 <p>
-                  Use <code>ex{suffix(<i>pattern</i>)</code> to add the output of <i>pattern</i> to the output only 
-                  when there is a throwable to print.
+                  Use a <code>{separator(...)}</code> as the end-of-line string. For example: <code>separator(|)</code>. 
+                  The default value is the <code>line.separator</code> system property, which is operating system dependent.
                 </p>
               </td>
             </tr>
@@ -928,6 +1015,7 @@ WARN  [main]: Message 2</pre>
               </td>
               <td>
                 <p>Adds ANSI colors to the result of the enclosed pattern based on the current event's logging level.
+                   (See Jansi <a href="#enable-jansi">configuration</a>.)
                 </p>
                 <p>The default colors for each level are:
                  <table>
@@ -1148,7 +1236,8 @@ WARN  [main]: Message 2</pre>
                 </p>
                 <!-- Copied and tweaked from Javadoc for org.apache.logging.log4j.core.pattern.JAnsiMessageRenderer -->
                 <p>
-                  Add <code>{ansi}</code> to render messages with ANSI escape codes (requires JAnsi.)
+                  Add <code>{ansi}</code> to render messages with ANSI escape codes (requires JAnsi,
+                    see <a href="#enable-jansi">configuration</a>.)
                 </p>
                 <p>
                   The default syntax for embedded ANSI codes is:
@@ -1363,23 +1452,23 @@ WARN  [main]: Message 2</pre>
                 </p>
                 <p>
                   The throwable conversion word can be followed by an option in the form
-                  <code>%rEx{short}</code> which will only output the first line of the Throwable or 
+                  <code>%rEx{short}</code> which will only output the first line of the Throwable or
                   <code>%rEx{n}</code> where the first n lines of the stack trace will be printed.
                 </p>
-                <p> 
+                <p>
                   Specifying <code>%rEx{none}</code> or <code>%rEx{0}</code> will suppress printing of the exception.
                 </p>
-                <p> 
-                  Use <code>filters(<i>packages</i>)</code> where <i>packages</i> is a list of package names to 
+                <p>
+                  Use <code>filters(<i>packages</i>)</code> where <i>packages</i> is a list of package names to
                   suppress matching stack frames from stack traces.
                 </p>
                 <p>
-                  Use a <code>separator</code> string to separate the lines of a stack trace. For example: 
-                  <code>separator(|)</code>. The default value is the <code>line.separator</code> system property, 
+                  Use a <code>separator</code> string to separate the lines of a stack trace. For example:
+                  <code>separator(|)</code>. The default value is the <code>line.separator</code> system property,
                   which is operating system dependent.
                 </p>
                 <p>
-                  Use <code>rEx{suffix(<i>pattern</i>)</code> to add the output of <i>pattern</i> to the output only 
+                  Use <code>rEx{suffix(<i>pattern</i>)</code> to add the output of <i>pattern</i> to the output only
                   when there is a throwable to print.
                 </p>
               </td>
@@ -1402,6 +1491,7 @@ WARN  [main]: Message 2</pre>
               <td>
                 <p>Uses ANSI escape sequences to style the result of the enclosed pattern. The style can consist of
                   a comma separated list of style names from the following table.
+                  (See Jansi <a href="#enable-jansi">configuration</a>.)
                   <table>
                     <tr>
                       <th>Style Name</th>
@@ -1545,6 +1635,20 @@ WARN  [main]: Message 2</pre>
             </tr>
             <tr>
               <td align="center">
+                <a name="PatternLoggerFqcn"/>
+                <b>fqcn</b>
+              </td>
+              <td>Outputs the fully qualified class name of the logger.</td>
+            </tr>
+            <tr>
+              <td align="center">
+                <a name="EndOfBatch"/>
+                <b>endOfBatch</b>
+              </td>
+              <td>Outputs the EndOfBatch status of the logging event, as "true" or "false".</td>
+            </tr>
+            <tr>
+              <td align="center">
                 <a name="PatternNDC"/>
                 <b>x</b><br />
                 <b>NDC</b>
@@ -1629,17 +1733,18 @@ WARN  [main]: Message 2</pre>
                   the first n lines of the stack trace will be printed. Specifying <code>%xEx{none}</code>
                   or <code>%xEx{0}</code> will suppress printing of the exception.
                 </p>
-                <p> 
-                  Use <code>filters(<i>packages</i>)</code> where <i>packages</i> is a list of package names to 
+                <p>
+                  Use <code>filters(<i>packages</i>)</code> where <i>packages</i> is a list of package names to
                   suppress matching stack frames from stack traces.
                 </p>
                 <p>
-                  Use a <code>separator</code> string to separate the lines of a stack trace. For example: 
-                  <code>separator(|)</code>. The default value is the <code>line.separator</code> system property, 
+                  Use a <code>separator</code> string to separate the lines of a stack trace. For example:
+                  <code>separator(|)</code>. The default value is the <code>line.separator</code> system property,
                   which is operating system dependent.
                 </p>
                 <p>
                  The <code>ansi</code> option renders stack traces with ANSI escapes code using the JAnsi library.
+                    (See <a href="#enable-jansi">configuration</a>.)
                  Use <code>{ansi}</code> to use the default color mapping. You can specify your own mappings with
                  <code>key=value</code> pairs. The keys are:
                 </p>
@@ -1805,11 +1910,17 @@ WARN  [main]: Message 2</pre>
             </tr>
             <caption align="top">Pattern Converters</caption>
           </table>
+          <a name="enable-jansi"></a>
           <h4>ANSI Styling on Windows</h4>
           <p>ANSI escape sequences are supported natively on many platforms but are not by default on Windows. To
-            enable ANSI support simply add the <a href="http://jansi.fusesource.org/">Jansi</a> jar to your
-            application and Log4j will automatically make use of it when writing to the console.
+            enable ANSI support add the <a href="http://jansi.fusesource.org/">Jansi</a> jar to your application
+            and set property <code>log4j.skipJansi</code> to <code>false</code>.
+            This allows Log4j to use Jansi to add ANSI escape codes when writing to the console.
           </p>
+          <p>NOTE: Prior to Log4j 2.10, Jansi was enabled by default. The fact that Jansi requires native code
+              means that Jansi can only be loaded by a single class loader. For web applications this means the
+              Jansi jar has to be in the web container's classpath. To avoid causing problems for web applications,
+              Log4j will no longer automatically try to load Jansi without explicit configuration from Log4j 2.10 onward.</p>
           <h4>Example Patterns</h4>
           <h5>Filtered Throwables</h5>
           <p>This example shows how to filter out classes from unimportant packages in stack traces.
@@ -2081,7 +2192,6 @@ at org.apache.logging.log4j.core.pattern.ExtendedThrowableTest.testException(Ext
           A well-formed XML document follows this pattern:
           </p>
           <pre class="prettyprint linenums">&lt;Event xmlns="http://logging.apache.org/log4j/2.0/events"
-       timeMillis="1493122559666"
        level="INFO"
        loggerName="HelloWorld"
        endOfBatch="false"
@@ -2089,6 +2199,7 @@ at org.apache.logging.log4j.core.pattern.ExtendedThrowableTest.testException(Ext
        loggerFqcn="org.apache.logging.log4j.spi.AbstractLogger"
        threadId="1"
        threadPriority="5"&gt;
+  &lt;Instant epochSecond="1493121664" nanoOfSecond="118000000"/>
   &lt;Marker name="child"&gt;
     &lt;Parents&gt;
       &lt;Marker name="parent"&gt;
@@ -2112,7 +2223,7 @@ at org.apache.logging.log4j.core.pattern.ExtendedThrowableTest.testException(Ext
       method="main"
       file="Main.java"
       line="29"/&gt;
-  &lt;Thrown commonElementCount="0" name="java.lang.RuntimeException"&gt;
+  &lt;Thrown commonElementCount="0" message="error message" name="java.lang.RuntimeException"&gt;
     &lt;ExtendedStackTrace&gt;
       &lt;ExtendedStackTraceItem
           class="logtest.Main"
@@ -2186,10 +2297,27 @@ at org.apache.logging.log4j.core.pattern.ExtendedThrowableTest.testException(Ext
             <tr>
               <td>stacktraceAsString</td>
               <td>boolean</td>
-              <td>Whether to format the stackstrace as a string, and not a nested object (optional, defaults to false).</td>
+              <td>Whether to format the stacktrace as a string, and not a nested object (optional, defaults to false).</td>
+            </tr>
+            <tr>
+              <td>includeNullDelimiter</td>
+              <td>boolean</td>
+              <td>Whether to include NULL byte as delimiter after each event (optional, default to false).</td>
             </tr>
             <caption align="top">XmlLayout Parameters</caption>
           </table>
+          <p>
+              To include any custom field in the output, use following syntax:
+          </p>
+              <pre class="prettyprint linenums">
+  &lt;XmlLayout&gt;
+    &lt;KeyValuePair key="additionalField1" value="constant value"/&gt;
+    &lt;KeyValuePair key="additionalField2" value="${dollar}${dollar}{ctx:key}"/&gt;
+  &lt;/XmlLayout&gt;
+</pre>
+          <p>
+              Custom fields are always last, in the order they are declared.  The values support <a href="lookups.html">lookups</a>.
+          </p>
           <p>
             Additional <a href="../runtime-dependencies.html">runtime dependencies</a> are required for using XmlLayout.
           </p>
@@ -2203,7 +2331,9 @@ at org.apache.logging.log4j.core.pattern.ExtendedThrowableTest.testException(Ext
             A YAML log event follows this pattern:
           </p>
           <pre class="prettyprint linenums">---
-timeMillis: 1493122307075
+instant:
+ epochSecond: 1493121664
+ nanoOfSecond: 118000000
 thread: "main"
 level: "INFO"
 loggerName: "HelloWorld"
@@ -2216,6 +2346,7 @@ marker:
 message: "Hello, world!"
 thrown:
  commonElementCount: 0
+ message: "error message"
  name: "java.lang.RuntimeException"
  extendedStackTrace:
  - class: "logtest.Main"
@@ -2275,10 +2406,27 @@ source:
             <tr>
               <td>stacktraceAsString</td>
               <td>boolean</td>
-              <td>Whether to format the stackstrace as a string, and not a nested object (optional, defaults to false).</td>
+              <td>Whether to format the stacktrace as a string, and not a nested object (optional, defaults to false).</td>
+            </tr>
+            <tr>
+              <td>includeNullDelimiter</td>
+              <td>boolean</td>
+              <td>Whether to include NULL byte as delimiter after each event (optional, default to false).</td>
             </tr>
             <caption align="top">YamlLayout Parameters</caption>
           </table>
+          <p>
+              To include any custom field in the output, use following syntax:
+          </p>
+              <pre class="prettyprint linenums">
+  &lt;YamlLayout&gt;
+    &lt;KeyValuePair key="additionalField1" value="constant value"/&gt;
+    &lt;KeyValuePair key="additionalField2" value="${dollar}${dollar}{ctx:key}"/&gt;
+  &lt;/YamlLayout&gt;
+</pre>
+          <p>
+              Custom fields are always last, in the order they are declared.  The values support <a href="lookups.html">lookups</a>.
+          </p>
           <p>
             Additional <a href="../runtime-dependencies.html">runtime dependencies</a> are required for using YamlLayout.
           </p>

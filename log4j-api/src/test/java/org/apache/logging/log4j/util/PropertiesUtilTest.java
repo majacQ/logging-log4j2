@@ -17,16 +17,17 @@
 
 package org.apache.logging.log4j.util;
 
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.nio.charset.UnsupportedCharsetException;
-import java.util.Map;
-import java.util.Properties;
-
 import org.junit.Before;
 import org.junit.Test;
 
-import static org.junit.Assert.*;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Properties;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 
 /**
  *
@@ -76,10 +77,35 @@ public class PropertiesUtilTest {
 
         assertEquals(Charset.defaultCharset(), pu.getCharsetProperty("e.0"));
         assertEquals(StandardCharsets.US_ASCII, pu.getCharsetProperty("e.1"));
+        assertEquals(Charset.defaultCharset(), pu.getCharsetProperty("e.2"));
+    }
+    
+    @Test
+    public void testGetMappedProperty_sun_stdout_encoding() {
+        final PropertiesUtil pu = new PropertiesUtil(System.getProperties());
+        final Charset expected = System.console() == null ? Charset.defaultCharset() : StandardCharsets.UTF_8;
+        assertEquals(expected, pu.getCharsetProperty("sun.stdout.encoding"));
+    }
+
+    @Test
+    public void testGetMappedProperty_sun_stderr_encoding() {
+        final PropertiesUtil pu = new PropertiesUtil(System.getProperties());
+        final Charset expected = System.console() == null ? Charset.defaultCharset() : StandardCharsets.UTF_8;
+        assertEquals(expected, pu.getCharsetProperty("sun.err.encoding"));
+    }
+
+    @Test
+    public void testNonStringSystemProperties() {
+        final Object key1 = "1";
+        final Object key2 = new Object();
+        System.getProperties().put(key1, new Object());
+        System.getProperties().put(key2, "value-2");
         try {
-            pu.getCharsetProperty("e.2");
-            fail("No expected UnsupportedCharsetException");
-        } catch (final UnsupportedCharsetException ignored) {
+            final PropertiesUtil util = new PropertiesUtil(new Properties());
+            assertNull(util.getStringProperty("1"));
+        } finally {
+            System.getProperties().remove(key1);
+            System.getProperties().remove(key2);
         }
     }
 }

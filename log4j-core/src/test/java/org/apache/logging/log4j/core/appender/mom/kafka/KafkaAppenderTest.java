@@ -20,8 +20,9 @@ package org.apache.logging.log4j.core.appender.mom.kafka;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInput;
-import java.io.ObjectInputStream;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +37,7 @@ import org.apache.logging.log4j.core.LogEvent;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.junit.LoggerContextRule;
 import org.apache.logging.log4j.message.SimpleMessage;
+import org.apache.logging.log4j.util.FilteredObjectInputStream;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -48,21 +50,11 @@ import static org.junit.Assert.*;
 public class KafkaAppenderTest {
 
     private static final MockProducer<byte[], byte[]> kafka = new MockProducer<byte[], byte[]>(true, null, null) {
-        @Override
-        public void close() {
-            try {
-                Thread.sleep(3000);
-            } catch (final InterruptedException ignore) {
-            }
-        }
 
         @Override
         public void close(final long timeout, final TimeUnit timeUnit) {
-            try {
-                Thread.sleep(timeUnit.toMillis(timeout));
-            } catch (final InterruptedException ignore) {
-            }
         }
+
     };
 
     private static final String LOG_MESSAGE = "Hello, world!";
@@ -93,19 +85,6 @@ public class KafkaAppenderTest {
     @Before
     public void setUp() throws Exception {
         kafka.clear();
-    }
-
-    @Test
-    public void testAppend() throws Exception {
-        final Appender appender = ctx.getRequiredAppender("KafkaAppender");
-        appender.append(createLogEvent());
-        final List<ProducerRecord<byte[], byte[]>> history = kafka.history();
-        assertEquals(1, history.size());
-        final ProducerRecord<byte[], byte[]> item = history.get(0);
-        assertNotNull(item);
-        assertEquals(TOPIC_NAME, item.topic());
-        assertNull(item.key());
-        assertEquals(LOG_MESSAGE, new String(item.value(), StandardCharsets.UTF_8));
     }
 
     @Test
@@ -148,16 +127,45 @@ public class KafkaAppenderTest {
         assertEquals(LOG_MESSAGE, new String(item.value(), StandardCharsets.UTF_8));
     }
 
+    @Test
+    public void testAppendWithKey() throws Exception {
+        final Appender appender = ctx.getRequiredAppender("KafkaAppenderWithKey");
+        final LogEvent logEvent = createLogEvent();
+        appender.append(logEvent);
+        final List<ProducerRecord<byte[], byte[]>> history = kafka.history();
+        assertEquals(1, history.size());
+        final ProducerRecord<byte[], byte[]> item = history.get(0);
+        assertNotNull(item);
+        assertEquals(TOPIC_NAME, item.topic());
+        final String msgKey = item.key().toString();
+        final byte[] keyValue = "key".getBytes(StandardCharsets.UTF_8);
+        assertArrayEquals(item.key(), keyValue);
+        assertEquals(LOG_MESSAGE, new String(item.value(), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    public void testAppendWithKeyLookup() throws Exception {
+        final Appender appender = ctx.getRequiredAppender("KafkaAppenderWithKeyLookup");
+        final LogEvent logEvent = createLogEvent();
+        final Date date = new Date();
+        final SimpleDateFormat format = new SimpleDateFormat("dd-MM-yyyy");
+        appender.append(logEvent);
+        final List<ProducerRecord<byte[], byte[]>> history = kafka.history();
+        assertEquals(1, history.size());
+        final ProducerRecord<byte[], byte[]> item = history.get(0);
+        assertNotNull(item);
+        assertEquals(TOPIC_NAME, item.topic());
+        final byte[] keyValue = format.format(date).getBytes(StandardCharsets.UTF_8);
+        assertArrayEquals(item.key(), keyValue);
+        assertEquals(LOG_MESSAGE, new String(item.value(), StandardCharsets.UTF_8));
+    }
+
+
     private LogEvent deserializeLogEvent(final byte[] data) throws IOException, ClassNotFoundException {
         final ByteArrayInputStream bis = new ByteArrayInputStream(data);
-        try (ObjectInput ois = new ObjectInputStream(bis)) {
+        try (ObjectInput ois = new FilteredObjectInputStream(bis)) {
             return (LogEvent) ois.readObject();
         }
     }
 
-    @Test(timeout = 2000)
-    public void testClose() throws Exception {
-        final Appender appender = ctx.getRequiredAppender("KafkaAppender");
-        appender.stop();
-    }
 }

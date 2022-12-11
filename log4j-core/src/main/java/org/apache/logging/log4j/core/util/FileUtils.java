@@ -61,9 +61,8 @@ public final class FileUtils {
      */
     public static File fileFromUri(URI uri) {
         // There MUST be a better way to do this. TODO Search other ASL projects...
-        if (uri == null
-                || (uri.getScheme() != null && (!PROTOCOL_FILE.equals(uri.getScheme()) && !JBOSS_FILE.equals(uri
-                        .getScheme())))) {
+        if (uri == null || (uri.getScheme() != null
+                && (!PROTOCOL_FILE.equals(uri.getScheme()) && !JBOSS_FILE.equals(uri.getScheme())))) {
             return null;
         }
         if (uri.getScheme() == null) {
@@ -113,7 +112,7 @@ public final class FileUtils {
 
     /**
      * Asserts that the given directory exists and creates it if necessary.
-     * 
+     *
      * @param dir the directory that shall exist
      * @param createDirectoryIfNotExisting specifies if the directory shall be created if it does not exist.
      * @throws java.io.IOException thrown if the directory could not be created.
@@ -132,10 +131,10 @@ public final class FileUtils {
             throw new IOException("File " + dir + " exists and is not a directory. Unable to create directory.");
         }
     }
-    
+
     /**
      * Creates the parent directories for the given File.
-     * 
+     *
      * @param file
      * @throws IOException
      */

@@ -31,6 +31,14 @@
       <includes>
         <include>**/*.class</include>
       </includes>
+      <excludes>
+        <exclude>**/Dummy.class</exclude>
+        <exclude>**/spi/Provider.class</exclude>
+        <exclude>**/util/PropertySource.class</exclude>
+        <exclude>**/util/PrivateSecurityManagerStackTraceUtil.class</exclude>
+        <exclude>**/message/ThreadDumpMessage.class</exclude>
+        <exclude>**/message/ThreadDumpMessage$ThreadInfoFactory.class</exclude>
+      </excludes>
     </fileSet>
   </fileSets>
 </assembly>

@@ -42,6 +42,7 @@ import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.jmx.Server;
 import org.apache.logging.log4j.core.util.Cancellable;
 import org.apache.logging.log4j.core.util.ExecutorServices;
+import org.apache.logging.log4j.core.util.Loader;
 import org.apache.logging.log4j.core.util.NetUtils;
 import org.apache.logging.log4j.core.util.ShutdownCallbackRegistry;
 import org.apache.logging.log4j.message.MessageFactory;
@@ -49,8 +50,9 @@ import org.apache.logging.log4j.spi.AbstractLogger;
 import org.apache.logging.log4j.spi.LoggerContextFactory;
 import org.apache.logging.log4j.spi.LoggerRegistry;
 import org.apache.logging.log4j.spi.Terminable;
-import org.apache.logging.log4j.util.LoaderUtil;
+import org.apache.logging.log4j.spi.ThreadContextMapFactory;
 import org.apache.logging.log4j.util.PropertiesUtil;
+
 
 /**
  * The LoggerContext is the anchor for the logging system. It maintains a list of all the loggers requested by
@@ -63,7 +65,7 @@ public class LoggerContext extends AbstractLifeCycle
     static {
         try {
             // LOG4J2-1642 preload ExecutorServices as it is used in shutdown hook
-            LoaderUtil.loadClass(ExecutorServices.class.getName());
+            Loader.loadClass(ExecutorServices.class.getName());
         } catch (final Exception e) {
             LOGGER.error("Failed to preload ExecutorServices class.", e);
         }
@@ -488,14 +490,15 @@ public class LoggerContext extends AbstractLifeCycle
         return loggerRegistry.hasLogger(name, messageFactoryClass);
     }
 
-    /**
-     * Returns the current Configuration. The Configuration will be replaced when a reconfigure occurs.
-     *
-     * @return The Configuration.
-     */
-    public Configuration getConfiguration() {
-        return configuration;
-    }
+	/**
+	 * Returns the current Configuration. The Configuration will be replaced when a reconfigure occurs.
+	 *
+	 * @return The current Configuration, never {@code null}, but may be
+	 * {@link org.apache.logging.log4j.core.config.NullConfiguration}.
+	 */
+	public Configuration getConfiguration() {
+		return configuration;
+	}
 
     /**
      * Adds a Filter to the Configuration. Filters that are added through the API will be lost when a reconfigure
@@ -660,15 +663,23 @@ public class LoggerContext extends AbstractLifeCycle
      * @param reconfigurable The Configuration that can be reconfigured.
      */
     @Override
-    public synchronized void onChange(final Reconfigurable reconfigurable) {
-        LOGGER.debug("Reconfiguration started for context {} ({})", contextName, this);
-        final Configuration newConfig = reconfigurable.reconfigure();
-        if (newConfig != null) {
-            setConfiguration(newConfig);
-            LOGGER.debug("Reconfiguration completed for {} ({})", contextName, this);
-        } else {
-            LOGGER.debug("Reconfiguration failed for {} ({})", contextName, this);
-        }
+	public synchronized void onChange(final Reconfigurable reconfigurable) {
+		final long startMillis = System.currentTimeMillis();
+		LOGGER.debug("Reconfiguration started for context {} ({})", contextName, this);
+		initApiModule();
+		final Configuration newConfig = reconfigurable.reconfigure();
+		if (newConfig != null) {
+			setConfiguration(newConfig);
+			LOGGER.debug("Reconfiguration completed for {} ({}) in {} milliseconds.", contextName, this,
+					System.currentTimeMillis() - startMillis);
+		} else {
+			LOGGER.debug("Reconfiguration failed for {} ({}) in {} milliseconds.", contextName, this,
+					System.currentTimeMillis() - startMillis);
+		}
+	}
+
+    private void initApiModule() {
+        ThreadContextMapFactory.init(); // Or make public and call ThreadContext.init() which calls ThreadContextMapFactory.init().
     }
 
     // LOG4J2-151: changed visibility from private to protected

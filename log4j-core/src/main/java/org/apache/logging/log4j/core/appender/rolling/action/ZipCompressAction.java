@@ -29,7 +29,7 @@ import java.util.zip.ZipOutputStream;
  */
 public final class ZipCompressAction extends AbstractAction {
 
-    private static final int BUF_SIZE = 8102;
+    private static final int BUF_SIZE = 8192;
 
     /**
      * Source file.
@@ -132,7 +132,7 @@ public final class ZipCompressAction extends AbstractAction {
 
     @Override
     public String toString() {
-        return ZipCompressAction.class.getSimpleName() + '[' + source + " to " + destination //
+        return ZipCompressAction.class.getSimpleName() + '[' + source + " to " + destination
                 + ", level=" + level + ", deleteSource=" + deleteSource + ']';
     }
 

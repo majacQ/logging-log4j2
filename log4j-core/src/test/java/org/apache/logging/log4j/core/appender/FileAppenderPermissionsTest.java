@@ -37,7 +37,6 @@ import org.apache.commons.lang3.SystemUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.config.status.StatusConfiguration;
 import org.apache.logging.log4j.core.impl.Log4jLogEvent;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 import org.apache.logging.log4j.core.util.FileUtils;
@@ -93,13 +92,10 @@ public class FileAppenderPermissionsTest {
                 .build();
         // @formatter:off
         final FileAppender appender = FileAppender.newBuilder()
-            .withFileName(file.getAbsolutePath())
-            .withName("test")
-            .withImmediateFlush(false)
-            .withIgnoreExceptions(false)
+        .withFileName(file.getAbsolutePath()).setName("test")
+            .withImmediateFlush(false).setIgnoreExceptions(false)
             .withBufferedIo(false)
-            .withBufferSize(1)
-            .withLayout(layout)
+            .withBufferSize(1).setLayout(layout)
             .withCreateOnDemand(createOnDemand)
             .withFilePermissions(filePermissions)
             .build();
@@ -130,10 +126,11 @@ public class FileAppenderPermissionsTest {
             assertEquals(filePermissions, PosixFilePermissions.toString(Files.getPosixFilePermissions(path)));
         } finally {
             appender.stop();
+            Files.deleteIfExists(path);
         }
         assertFalse("Appender did not stop", appender.isStarted());
     }
-    
+
     @Test
     public void testFileUserGroupAPI() throws Exception {
         final File file = new File(DIR, "AppenderTest-" + (1000 + fileIndex) + ".log");
@@ -147,13 +144,10 @@ public class FileAppenderPermissionsTest {
                 .build();
         // @formatter:off
         final FileAppender appender = FileAppender.newBuilder()
-            .withFileName(file.getAbsolutePath())
-            .withName("test")
-            .withImmediateFlush(true)
-            .withIgnoreExceptions(false)
+        .withFileName(file.getAbsolutePath()).setName("test")
+            .withImmediateFlush(true).setIgnoreExceptions(false)
             .withBufferedIo(false)
-            .withBufferSize(1)
-            .withLayout(layout)
+            .withBufferSize(1).setLayout(layout)
             .withFilePermissions(filePermissions)
             .withFileOwner(user)
             .withFileGroup(group)
@@ -186,6 +180,7 @@ public class FileAppenderPermissionsTest {
             assertEquals(group, Files.readAttributes(path, PosixFileAttributes.class).group().getName());
         } finally {
             appender.stop();
+            Files.deleteIfExists(path);
         }
         assertFalse("Appender did not stop", appender.isStarted());
     }

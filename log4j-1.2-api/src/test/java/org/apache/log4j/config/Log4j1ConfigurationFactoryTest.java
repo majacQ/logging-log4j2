@@ -24,6 +24,7 @@ import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
@@ -161,11 +162,22 @@ public class Log4j1ConfigurationFactoryTest {
 
 	@Test
 	public void testSystemProperties1() throws Exception {
-		final Configuration configuration = getConfiguration("config-1.2/log4j-system-properties-1.properties");
-		final RollingFileAppender appender = configuration.getAppender("RFA");
         final String tempFileName = System.getProperty("java.io.tmpdir") + "/hadoop.log";
-        System.out.println("expected: " + tempFileName + " Actual: " + appender.getFileName());
-		assertEquals(tempFileName, appender.getFileName());
+        final Path tempFilePath = new File(tempFileName).toPath();
+        Files.deleteIfExists(tempFilePath);
+        try {
+            final Configuration configuration = getConfiguration("config-1.2/log4j-system-properties-1.properties");
+            final RollingFileAppender appender = configuration.getAppender("RFA");
+			appender.stop(10, TimeUnit.SECONDS);
+            System.out.println("expected: " + tempFileName + " Actual: " + appender.getFileName());
+            assertEquals(tempFileName, appender.getFileName());
+        } finally {
+			try {
+				Files.deleteIfExists(tempFilePath);
+			} catch (final FileSystemException e) {
+				e.printStackTrace();
+			}
+        }
 	}
 
 	@Test

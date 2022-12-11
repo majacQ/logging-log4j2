@@ -24,7 +24,7 @@ import org.apache.logging.log4j.core.util.Throwables;
 
 public class MockUdpSyslogServer extends MockSyslogServer {
     private final DatagramSocket socket;
-    private boolean shutdown = false;
+    private volatile boolean shutdown = false;
     private Thread thread;
 
     public MockUdpSyslogServer(final int numberOfMessagesToReceive, final int port) throws SocketException {
@@ -35,12 +35,22 @@ public class MockUdpSyslogServer extends MockSyslogServer {
     @Override
     public void shutdown() {
         this.shutdown = true;
-        thread.interrupt();
-        socket.close();
+        if (socket != null) {
+            socket.close();
+        }
+        if (thread != null) {
+            thread.interrupt();
+            try {
+                thread.join(100);
+            } catch (final InterruptedException ie) {
+                System.out.println("Shutdown of Log4j UDP server thread failed.");
+            }
+        }
     }
 
     @Override
     public void run() {
+        System.out.println("Log4j UDP Server started.");
         this.thread = Thread.currentThread();
         final byte[] bytes = new byte[4096];
         final DatagramPacket packet = new DatagramPacket(bytes, bytes.length);
@@ -55,5 +65,6 @@ public class MockUdpSyslogServer extends MockSyslogServer {
                 Throwables.rethrow(e);
             }
         }
+        System.out.println("Log4j UDP server stopped.");
     }
 }

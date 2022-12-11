@@ -3,37 +3,22 @@
 Apache Log4j 2 is an upgrade to Log4j that provides significant improvements over its predecessor, Log4j 1.x,
 and provides many of the improvements available in Logback while fixing some inherent problems in Logback's architecture.
 
-[![Jenkins Status](https://builds.apache.org/buildStatus/icon?job=Log4j 2.x)](https://builds.apache.org/job/Log4j%202.x/)
+[![Jenkins Status](https://img.shields.io/jenkins/s/https/builds.apache.org/job/Log4j%202.x.svg)](https://builds.apache.org/job/Log4j%202.x/)
 [![Travis Status](https://travis-ci.org/apache/logging-log4j2.svg?branch=master)](https://travis-ci.org/apache/logging-log4j2)
-[![Coverage Status](https://coveralls.io/repos/github/apache/logging-log4j2/badge.svg?branch=master)](https://coveralls.io/github/apache/logging-log4j2?branch=master)
+[![Maven Central](https://img.shields.io/maven-central/v/org.apache.logging.log4j/log4j-api.svg)](http://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-api)
+
+
+## Pull Requests on Github
+
+By sending a pull request you grant the Apache Software Foundation sufficient rights to use and release the submitted 
+work under the Apache license. You grant the same rights (copyright license, patent license, etc.) to the 
+Apache Software Foundation as if you have signed a Contributor License Agreement. For contributions that are 
+judged to be non-trivial, you will be asked to actually signing a Contributor License Agreement.
 
 ## Usage
 
-Maven users can add the following dependencies to their `pom.xml` file:
-
-```xml
-<dependencies>
-  <dependency>
-    <groupId>org.apache.logging.log4j</groupId>
-    <artifactId>log4j-api</artifactId>
-    <version>2.8</version>
-  </dependency>
-  <dependency>
-    <groupId>org.apache.logging.log4j</groupId>
-    <artifactId>log4j-core</artifactId>
-    <version>2.8</version>
-  </dependency>
-</dependencies>
-```
-
-Gradle users can add the following to their `build.gradle` file:
-
-```gradle
-dependencies {
-  compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.8'
-  compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.8'
-}
-```
+Users should refer to [Maven, Ivy, Gradle, and SBT Artifacts](http://logging.apache.org/log4j/2.x/maven-artifacts.html)
+on the Log4j web site for instructions on how to include Log4j into their project using their chosen build tool.
 
 Basic usage of the `Logger` API:
 

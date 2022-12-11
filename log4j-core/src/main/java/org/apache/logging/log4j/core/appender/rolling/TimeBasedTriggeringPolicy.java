@@ -33,18 +33,18 @@ import org.apache.logging.log4j.core.util.Integers;
 @Plugin(name = "TimeBasedTriggeringPolicy", category = Core.CATEGORY_NAME, printObject = true)
 public final class TimeBasedTriggeringPolicy extends AbstractTriggeringPolicy {
 
-    
+
     public static class Builder implements org.apache.logging.log4j.core.util.Builder<TimeBasedTriggeringPolicy> {
 
         @PluginBuilderAttribute
         private int interval = 1;
-        
+
         @PluginBuilderAttribute
         private boolean modulate = false;
-        
+
         @PluginBuilderAttribute
         private int maxRandomDelay = 0;
-        
+
         @Override
         public TimeBasedTriggeringPolicy build() {
             final long maxRandomDelayMillis = TimeUnit.SECONDS.toMillis(maxRandomDelay);
@@ -62,17 +62,17 @@ public final class TimeBasedTriggeringPolicy extends AbstractTriggeringPolicy {
         public int getMaxRandomDelay() {
             return maxRandomDelay;
         }
-        
+
         public Builder withInterval(final int interval){
             this.interval = interval;
             return this;
         }
-        
+
         public Builder withModulate(final boolean modulate){
             this.modulate = modulate;
             return this;
         }
-        
+
         public Builder withMaxRandomDelay(final int maxRandomDelay){
             this.maxRandomDelay = maxRandomDelay;
             return this;
@@ -108,12 +108,16 @@ public final class TimeBasedTriggeringPolicy extends AbstractTriggeringPolicy {
     @Override
     public void initialize(final RollingFileManager aManager) {
         this.manager = aManager;
-        
+        long current = aManager.getFileTime();
+        if (current == 0) {
+            current = System.currentTimeMillis();
+        }
+
         // LOG4J2-531: call getNextTime twice to force initialization of both prevFileTime and nextFileTime
-        aManager.getPatternProcessor().getNextTime(aManager.getFileTime(), interval, modulate);
-        
+        aManager.getPatternProcessor().getNextTime(current, interval, modulate);
+
         nextRolloverMillis = ThreadLocalRandom.current().nextLong(0, 1 + maxRandomDelayMillis)
-                + aManager.getPatternProcessor().getNextTime(aManager.getFileTime(), interval, modulate);
+                + aManager.getPatternProcessor().getNextTime(current, interval, modulate);
     }
 
     /**
@@ -130,6 +134,7 @@ public final class TimeBasedTriggeringPolicy extends AbstractTriggeringPolicy {
         if (nowMillis >= nextRolloverMillis) {
             nextRolloverMillis = ThreadLocalRandom.current().nextLong(0, 1 + maxRandomDelayMillis)
                     + manager.getPatternProcessor().getNextTime(nowMillis, interval, modulate);
+            manager.getPatternProcessor().setCurrentFileTime(System.currentTimeMillis());
             return true;
         }
         return false;
@@ -151,7 +156,7 @@ public final class TimeBasedTriggeringPolicy extends AbstractTriggeringPolicy {
                 .withModulate(Boolean.parseBoolean(modulate))
                 .build();
     }
-    
+
     @PluginBuilderFactory
     public static TimeBasedTriggeringPolicy.Builder newBuilder() {
         return new Builder();
