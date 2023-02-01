@@ -375,7 +375,7 @@
     <slf4j.version>2.0.5</slf4j.version>
   <<<<<<< dependabot/maven/org.springframework-spring-framework-bom-6.0.2
     <spring.version>6.0.2</spring.version>
-    <spring-boot.version>2.7.5</spring-boot.version>
+    <spring-boot.version>3.0.2</spring-boot.version>
   =======
     <spring.version>5.3.23</spring.version>
     <spring-boot.version>3.0.0</spring-boot.version>
