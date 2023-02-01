@@ -381,7 +381,7 @@
     <spring-boot.version>3.0.0</spring-boot.version>
   >>>>>>> release-2.x
     <system-stubs.version>2.0.1</system-stubs.version>
-    <tomcat-juli.version>10.1.4</tomcat-juli.version>
+    <tomcat-juli.version>10.1.5</tomcat-juli.version>
     <velocity.version>1.7</velocity.version>
     <wiremock.version>2.35.0</wiremock.version>
     <woodstox.version>6.4.0</woodstox.version>
